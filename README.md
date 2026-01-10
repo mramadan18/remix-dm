@@ -13,12 +13,17 @@
 
 ## ✨ Features
 
-- 🚀 **Universal Support**: Download from YouTube, TikTok, Instagram, Twitter(X), Facebook, Vimeo, and 1000+ other sites.
+- 🚀 **Universal Support**: Download from YouTube, TikTok, Instagram, Twitter(X), Facebook, Vimeo, Twitch, Dailymotion, and 1000+ other sites.
 - 📊 **Real-time Progress**: Track download speed, ETA, and progress percentage with a smooth, live-updating UI.
 - 🎞️ **Quality Selection**: Choose your preferred quality from 360p up to 4K (if available).
-- 🎵 **Audio Extraction**: Download high-quality audio directly in MP3, M4A, or FLAC formats.
+- 🎵 **Audio Extraction**: Download high-quality audio directly in MP3, M4A, OPUS, or FLAC formats.
 - 📝 **Info Extraction**: See title, duration, uploader, and thumbnails before you even start the download.
-- 🃏 **Smart Batching**: Add multiple links to the queue and download them sequentially.
+- 🎬 **Playlist Support**: Download entire playlists from YouTube and Vimeo with a single click.
+- 🃏 **Smart Batching**: Add multiple links to the queue and download them sequentially or in parallel.
+- ⚡ **Concurrent Downloads**: Download up to 3 files simultaneously for faster completion.
+- 🎛️ **Download Management**: Pause, resume, or cancel downloads with full control over your queue.
+- 📚 **Download History**: Keep track of all your past downloads with search and filter capabilities.
+- ⚙️ **Customizable Settings**: Configure download paths, concurrent download limits, and theme preferences.
 - 💎 **Premium UI**: Dark-mode-first aesthetic with Glassmorphism effects and smooth Framer Motion animations.
 - 🛠️ **Binary Management**: Automatically downloads and updates the latest `yt-dlp` engine in the background.
 
@@ -64,16 +69,25 @@
    ```
 
 4. Build for production:
+
    ```bash
    npm run build
    ```
+
+   The built application will be available in the `dist/` directory.
 
 ---
 
 ## 📁 Project Structure
 
 - `main/`: Electron main process files, IPC handlers, and backend services.
+  - `services/`: Download services, binary management, and utility functions.
+  - `ipc/`: Inter-process communication handlers for download operations.
 - `renderer/`: Next.js frontend, components, hooks, and styles.
+  - `components/`: React components for UI screens and layouts.
+  - `hooks/`: Custom React hooks for download management and window controls.
+  - `pages/`: Next.js pages and routing.
+- `app/`: Compiled Electron application files.
 - `resources/`: Application assets and icons.
 
 ---
