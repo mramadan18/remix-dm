@@ -6,6 +6,7 @@
 import { app } from "electron";
 import * as fs from "fs";
 import * as path from "path";
+import slugify from "slugify";
 
 /**
  * Get the default downloads directory
@@ -31,6 +32,18 @@ export function getDownloadSubPath(
   return subPath;
 }
 
+export function slugifyFilename(text: string): string {
+  if (!text) return "";
+
+  return slugify(text, {
+    replacement: "-",
+    remove: /[*+~.()'"!:@]/g,
+    lower: false, // Keep original case
+    strict: true, // Strip special characters
+    trim: true,
+  });
+}
+
 /**
  * Sanitize a filename to remove invalid characters
  * Windows MAX_PATH is 260, but we need to account for the full path
@@ -38,46 +51,45 @@ export function getDownloadSubPath(
  */
 export function sanitizeFilename(
   filename: string,
-  maxLength: number = 200
+  maxLength: number = 200,
+  slugify: boolean = false
 ): string {
   if (!filename || typeof filename !== "string") {
     return "download";
   }
 
-  // Characters not allowed in Windows filenames
-  // Note: This regex only removes filesystem-invalid characters, not Unicode characters
-  // Arabic, Chinese, and other Unicode characters are allowed
-  const invalidChars = /[<>:"/\\|?*\x00-\x1f]/g;
+  // Get extension and base name to sanitize them separately
+  const ext = path.extname(filename);
+  const base = filename.substring(0, filename.length - ext.length);
 
-  // Replace invalid characters with underscore
-  let sanitized = filename.replace(invalidChars, "_");
+  let sanitizedBase = base;
 
-  // Remove leading/trailing spaces, dots, and other problematic characters
-  sanitized = sanitized.trim().replace(/^\.+|\.+$/g, "");
-
-  // Remove multiple consecutive spaces/underscores (but preserve single spaces for readability)
-  sanitized = sanitized.replace(/[\s_]{2,}/g, " ");
-
-  // Remove trailing spaces and dots (Windows doesn't allow these)
-  sanitized = sanitized.replace(/[\s.]+$/g, "");
-
-  // Limit filename length (leaving room for extension)
-  // Note: For Unicode characters, we count by code points, not bytes
-  if (sanitized.length > maxLength) {
-    // Use Array.from to properly handle Unicode characters
-    const chars = Array.from(sanitized);
-    sanitized = chars.slice(0, maxLength).join("").trim();
+  if (slugify) {
+    sanitizedBase = slugifyFilename(base);
+  } else {
+    // Standard sanitization
+    // Characters not allowed in Windows filenames
+    const invalidChars = /[<>:"/\\|?*\x00-\x1f]/g;
+    sanitizedBase = base.replace(invalidChars, "_");
+    sanitizedBase = sanitizedBase.trim().replace(/^\.+|\.+$/g, "");
+    sanitizedBase = sanitizedBase.replace(/[\s_]{2,}/g, " ");
   }
 
-  // Ensure filename is not empty and doesn't end with dot or space
-  if (!sanitized || sanitized === "." || sanitized === "..") {
-    sanitized = "download";
+  // Limit length
+  if (sanitizedBase.length > maxLength) {
+    const chars = Array.from(sanitizedBase);
+    sanitizedBase = chars.slice(0, maxLength).join("").trim();
   }
 
-  // Remove any remaining trailing dots or spaces
-  sanitized = sanitized.replace(/[\s.]+$/g, "");
+  // Final cleanup of base
+  sanitizedBase = sanitizedBase.replace(/[\s.]+$/g, "") || "download";
 
-  return sanitized || "download";
+  // Reattach extension (also sanitize it just in case)
+  const sanitizedExt = ext
+    .replace(/[<>:"/\\|?*\x00-\x1f\s]/g, "")
+    .toLowerCase();
+
+  return sanitizedBase + sanitizedExt;
 }
 
 /**

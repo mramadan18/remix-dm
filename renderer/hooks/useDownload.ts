@@ -159,6 +159,39 @@ export async function clearCompletedDownloads(): Promise<ApiResponse<number>> {
 }
 
 /**
+ * Open file location in explorer
+ */
+export async function openFileLocation(
+  path: string
+): Promise<ApiResponse<boolean>> {
+  try {
+    const result = await window.ipc.invoke("shell:show-item-in-folder", path);
+    return result as ApiResponse<boolean>;
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to open file location",
+    };
+  }
+}
+
+/**
+ * Open file with default application
+ */
+export async function openFile(path: string): Promise<ApiResponse<boolean>> {
+  try {
+    const result = await window.ipc.invoke("shell:open-path", path);
+    return result as ApiResponse<boolean>;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to open file",
+    };
+  }
+}
+
+/**
  * Get default download path
  */
 export async function getDefaultDownloadPath(): Promise<ApiResponse<string>> {
@@ -311,6 +344,14 @@ export function useDownloads() {
     return result;
   }, []);
 
+  const openLocation = useCallback(async (path: string) => {
+    return openFileLocation(path);
+  }, []);
+
+  const executeFile = useCallback(async (path: string) => {
+    return openFile(path);
+  }, []);
+
   // Derived state
   const activeDownloads = downloads.filter(
     (d) =>
@@ -336,6 +377,8 @@ export function useDownloads() {
     resume,
     cancel,
     clearCompleted,
+    openLocation,
+    executeFile,
   };
 }
 

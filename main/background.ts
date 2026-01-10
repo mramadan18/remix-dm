@@ -3,6 +3,7 @@ import { app, ipcMain } from "electron";
 import serve from "electron-serve";
 import { createWindow } from "./helpers";
 import { registerWindowIpc } from "./ipc/window-ipc";
+import { registerShellIpc } from "./ipc/shell-ipc";
 import { initializeDownloadIpc } from "./ipc/download-ipc";
 import {
   getFfmpegPath,
@@ -27,6 +28,7 @@ if (isProd) {
     height: 720,
     titleBarOverlay: true,
     frame: false,
+    center: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
     },
@@ -34,6 +36,9 @@ if (isProd) {
 
   // Register Window IPC handlers
   registerWindowIpc(mainWindow);
+
+  // Register Shell IPC handlers
+  registerShellIpc();
 
   // Initialize Download IPC handlers
   initializeDownloadIpc();

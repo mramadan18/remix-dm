@@ -18,21 +18,25 @@ export const StatusMessage = ({ message, type }: StatusMessageProps) => {
       className="mb-6"
     >
       <Card
-        className={
+        className={`${
           isError
             ? "border-danger/30 bg-danger/10"
             : "border-success/30 bg-success/10"
-        }
+        }`}
       >
-        <CardBody className="flex flex-row items-center gap-3 py-3">
+        <CardBody className="flex flex-row items-start gap-3 py-3">
           {isError ? (
-            <AlertCircle className="text-danger" size={20} />
+            <AlertCircle className="text-danger shrink-0" size={20} />
           ) : (
-            <CheckCircle2 className="text-success" size={20} />
+            <CheckCircle2 className="text-success shrink-0" size={20} />
           )}
-          <span className={isError ? "text-danger" : "text-success"}>
+          <p
+            className={`${
+              isError ? "text-danger" : "text-success"
+            } break-all whitespace-pre-wrap min-w-0`}
+          >
             {message}
-          </span>
+          </p>
         </CardBody>
       </Card>
     </motion.div>

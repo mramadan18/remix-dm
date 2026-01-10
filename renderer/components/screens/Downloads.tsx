@@ -124,11 +124,15 @@ function DownloadCard({
   onPause,
   onResume,
   onCancel,
+  onOpenLocation,
+  onOpenFile,
 }: {
   item: DownloadItem;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
+  onOpenLocation: (path: string) => void;
+  onOpenFile: (path: string) => void;
 }) {
   const isActive =
     item.status === DownloadStatus.DOWNLOADING ||
@@ -144,6 +148,13 @@ function DownloadCard({
     item.status !== DownloadStatus.COMPLETED &&
     item.status !== DownloadStatus.CANCELLED;
 
+  // Use backslashes or forward slashes based on what's available
+  // Electron shell functions handle both, but we need to join them
+  const fullPath =
+    item.outputPath && item.filename
+      ? `${item.outputPath}/${item.filename}`
+      : item.outputPath;
+
   return (
     <Card className="shadow-sm hover:shadow-md transition-shadow animate-appearance-in">
       <CardBody className="p-4">
@@ -152,11 +163,13 @@ function DownloadCard({
           <div className="w-20 h-14 bg-default-100 rounded-lg overflow-hidden shrink-0">
             {item.videoInfo?.thumbnail ? (
               <Image
+                radius="none"
                 alt="Thumbnail"
                 src={item.videoInfo.thumbnail}
+                onClick={() => fullPath && onOpenFile(fullPath)}
                 classNames={{
-                  wrapper: "w-full h-full",
-                  img: "object-cover w-full h-full",
+                  wrapper: "w-full h-full cursor-pointer",
+                  img: "object-cover w-full h-full hover:scale-115 transition-transform",
                 }}
               />
             ) : (
@@ -262,10 +275,7 @@ function DownloadCard({
                     size="sm"
                     variant="light"
                     color="primary"
-                    onPress={() => {
-                      // Open file location - would need IPC call
-                      console.log("Open file location:", item.outputPath);
-                    }}
+                    onPress={() => fullPath && onOpenLocation(fullPath)}
                   >
                     <FolderOpen size={16} />
                   </Button>
@@ -344,6 +354,8 @@ const Downloads = () => {
     resume,
     cancel,
     clearCompleted,
+    openLocation,
+    executeFile,
   } = useDownloads();
 
   // Get displays based on selected tab
@@ -521,6 +533,8 @@ const Downloads = () => {
               onPause={pause}
               onResume={resume}
               onCancel={cancel}
+              onOpenLocation={openLocation}
+              onOpenFile={executeFile}
             />
           ))
         )}

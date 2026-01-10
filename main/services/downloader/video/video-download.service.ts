@@ -622,19 +622,29 @@ export class VideoDownloadService extends EventEmitter {
       }
     }
 
+    // Check if filename needs slugification (Arabic or other non-English characters)
+    const hasNonEnglish =
+      videoInfo?.title && /[^\x00-\x7F]/.test(videoInfo.title);
+
     // Generate filename template
     let filenameTemplate: string;
     if (options.filename && !options.filename.includes("%")) {
       // User provided specific filename
+      const needsSlugify = /[^\x00-\x7F]/.test(options.filename);
       if (qualityLabel) {
         const ext = path.extname(options.filename);
         const nameWithoutExt = options.filename.replace(ext, "");
         filenameTemplate = sanitizeFilename(
           `${nameWithoutExt}.${qualityLabel}${ext}`,
-          200
+          200,
+          needsSlugify
         );
       } else {
-        filenameTemplate = sanitizeFilename(options.filename, 200);
+        filenameTemplate = sanitizeFilename(
+          options.filename,
+          200,
+          needsSlugify
+        );
       }
     } else if (options.filename) {
       // User provided template
@@ -643,9 +653,18 @@ export class VideoDownloadService extends EventEmitter {
         : options.filename;
     } else {
       // Default template
+      // If title has Arabic/non-English, we resolve the title now and slugify it
+      const titleTemplate =
+        hasNonEnglish && videoInfo?.title
+          ? sanitizeFilename(videoInfo.title, 100, true).replace(
+              /\.[^/.]+$/,
+              ""
+            )
+          : "%(title).100s";
+
       filenameTemplate = qualityLabel
-        ? `%(title).100s.${qualityLabel}.%(ext)s`
-        : "%(title).100s.%(ext)s";
+        ? `${titleTemplate}.${qualityLabel}.%(ext)s`
+        : `${titleTemplate}.%(ext)s`;
     }
 
     // Build output path with template
@@ -919,25 +938,38 @@ export class VideoDownloadService extends EventEmitter {
           }
         }
 
-        if (
-          eventType === "youtube-dl" &&
-          eventData.includes("[download] Destination:")
-        ) {
-          const match = eventData.match(/Destination:\s+(.+)/);
-          if (match) {
-            item.progress.filename = path.basename(match[1]);
-            item.filename = item.progress.filename;
+        if (eventType === "youtube-dl") {
+          // 1. Standard Destination
+          if (eventData.includes("[download] Destination:")) {
+            const match = eventData.match(/Destination:\s+(.+)/);
+            if (match) {
+              item.progress.filename = path.basename(match[1]);
+              item.filename = item.progress.filename;
+            }
           }
-        }
+          // 2. Already Downloaded
+          else if (eventData.includes("has already been downloaded")) {
+            const match = eventData.match(
+              /\[download\]\s+(.+)\s+has already been downloaded/
+            );
+            if (match) {
+              item.progress.filename = path.basename(match[1]);
+              item.filename = item.progress.filename;
+            }
+          }
+          // 3. Merger Output (Final File)
+          else if (eventData.includes("[Merger] Merging formats into")) {
+            const match = eventData.match(/into\s+"?(.+?)"?$/);
+            if (match) {
+              item.progress.filename = path.basename(match[1]);
+              item.filename = item.progress.filename;
+            }
 
-        if (
-          eventData.includes("[Merger]") ||
-          eventData.includes("Merging formats")
-        ) {
-          item.status = DownloadStatus.MERGING;
-          item.progress.status = DownloadStatus.MERGING;
-          this.completedDownloads.add(item.id);
-          this.emit("status-changed", item);
+            item.status = DownloadStatus.MERGING;
+            item.progress.status = DownloadStatus.MERGING;
+            this.completedDownloads.add(item.id);
+            this.emit("status-changed", item);
+          }
         }
       });
 
@@ -957,18 +989,50 @@ export class VideoDownloadService extends EventEmitter {
           // Try to get actual file size if totalBytes is not available or downloadedBytes is 0
           if (
             !item.progress.totalBytes ||
-            item.progress.downloadedBytes === 0
+            item.progress.downloadedBytes === 0 ||
+            item.filename?.includes("%") // Also check if filename is not resolved
           ) {
             try {
+              // RESOLVE FILENAME: If filename still has template placeholders (like %(ext)s), find the real file
+              if (item.filename?.includes("%")) {
+                const outputDir = item.outputPath;
+                if (fs.existsSync(outputDir)) {
+                  // Get the base name without the extension placeholder
+                  // e.g. "my-video.1080p.%(ext)s" -> "my-video.1080p."
+                  const basePattern = item.filename.split(".%")[0];
+
+                  const files = fs.readdirSync(outputDir);
+
+                  // Find a file that starts with our base pattern
+                  const matchingFile = files.find(
+                    (f) =>
+                      f.startsWith(basePattern) &&
+                      !f.endsWith(".part") &&
+                      !f.endsWith(".ytdl")
+                  );
+
+                  if (matchingFile) {
+                    console.log(
+                      `[VideoDownload] Resolved filename from disk: ${matchingFile}`
+                    );
+                    item.filename = matchingFile;
+                    item.progress.filename = matchingFile;
+                  }
+                }
+              }
+
               // First, try to use the filename if we have it
               if (item.progress.filename || item.filename) {
                 const filename = item.progress.filename || item.filename;
-                const filePath = path.join(item.outputPath, filename);
-                if (fs.existsSync(filePath)) {
-                  const stats = fs.statSync(filePath);
-                  if (stats.size > 0) {
-                    item.progress.totalBytes = stats.size;
-                    item.progress.downloadedBytes = stats.size;
+                // Double check we don't hold a template
+                if (filename && !filename.includes("%")) {
+                  const filePath = path.join(item.outputPath, filename);
+                  if (fs.existsSync(filePath)) {
+                    const stats = fs.statSync(filePath);
+                    if (stats.size > 0) {
+                      item.progress.totalBytes = stats.size;
+                      item.progress.downloadedBytes = stats.size;
+                    }
                   }
                 }
               }
