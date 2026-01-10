@@ -169,7 +169,7 @@ function DownloadCard({
           {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-start gap-2 mb-2">
-              <h3 className="font-semibold truncate text-sm">
+              <h3 className="font-semibold truncate text-sm text-wrap line-clamp-2">
                 {item.videoInfo?.title || item.filename || "Downloading..."}
               </h3>
               <div className="flex items-center gap-2 shrink-0 text-xs text-default-500">

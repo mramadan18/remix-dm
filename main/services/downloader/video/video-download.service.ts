@@ -375,7 +375,8 @@ export class VideoDownloadService extends EventEmitter {
     const args: string[] = [
       "--no-warnings",
       "--newline", // Important for progress parsing
-      "--restrict-filenames", // Restrict filenames to ASCII only, avoid special chars
+      // Removed --restrict-filenames to support Arabic and other Unicode characters
+      // yt-dlp will still sanitize invalid filesystem characters automatically
       "-o",
       outputFilePath,
     ];
@@ -615,7 +616,7 @@ export class VideoDownloadService extends EventEmitter {
     } else {
       // Use yt-dlp template with sanitization
       // Limit title to 100 chars to avoid path length issues on Windows (MAX_PATH = 260)
-      // yt-dlp will sanitize invalid chars with --restrict-filenames
+      // yt-dlp will sanitize invalid filesystem chars automatically (supports Unicode including Arabic)
       filenameTemplate = "%(title).100s.%(ext)s";
     }
 

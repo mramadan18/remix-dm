@@ -34,13 +34,19 @@ export function getDownloadSubPath(
 /**
  * Sanitize a filename to remove invalid characters
  * Windows MAX_PATH is 260, but we need to account for the full path
+ * Supports Unicode characters including Arabic, Chinese, etc.
  */
-export function sanitizeFilename(filename: string, maxLength: number = 200): string {
+export function sanitizeFilename(
+  filename: string,
+  maxLength: number = 200
+): string {
   if (!filename || typeof filename !== "string") {
     return "download";
   }
 
   // Characters not allowed in Windows filenames
+  // Note: This regex only removes filesystem-invalid characters, not Unicode characters
+  // Arabic, Chinese, and other Unicode characters are allowed
   const invalidChars = /[<>:"/\\|?*\x00-\x1f]/g;
 
   // Replace invalid characters with underscore
@@ -49,15 +55,18 @@ export function sanitizeFilename(filename: string, maxLength: number = 200): str
   // Remove leading/trailing spaces, dots, and other problematic characters
   sanitized = sanitized.trim().replace(/^\.+|\.+$/g, "");
 
-  // Remove multiple consecutive spaces/underscores
-  sanitized = sanitized.replace(/[\s_]+/g, "_");
+  // Remove multiple consecutive spaces/underscores (but preserve single spaces for readability)
+  sanitized = sanitized.replace(/[\s_]{2,}/g, " ");
 
   // Remove trailing spaces and dots (Windows doesn't allow these)
   sanitized = sanitized.replace(/[\s.]+$/g, "");
 
   // Limit filename length (leaving room for extension)
+  // Note: For Unicode characters, we count by code points, not bytes
   if (sanitized.length > maxLength) {
-    sanitized = sanitized.substring(0, maxLength).trim();
+    // Use Array.from to properly handle Unicode characters
+    const chars = Array.from(sanitized);
+    sanitized = chars.slice(0, maxLength).join("").trim();
   }
 
   // Ensure filename is not empty and doesn't end with dot or space
