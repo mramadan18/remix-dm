@@ -60,7 +60,18 @@ export class VideoDownloadService extends EventEmitter {
     try {
       await ensureYtDlp();
       const ytDlp = getYtDlpWrap();
-      const metadata = await ytDlp.getVideoInfo(url);
+
+      // Use execPromise with custom args instead of getVideoInfo()
+      // The default getVideoInfo() uses "-f best" which is deprecated and causes warnings
+      // We use "--dump-single-json" which fetches all formats without selecting one
+      const rawOutput = await ytDlp.execPromise([
+        url,
+        "--dump-single-json",
+        "--no-warnings",
+        "--no-check-certificates",
+        "--flat-playlist", // Don't download playlist items, just get metadata
+      ]);
+      const metadata = JSON.parse(rawOutput);
 
       // Map raw metadata to VideoInfo
       const videoInfo: VideoInfo = {
@@ -134,10 +145,30 @@ export class VideoDownloadService extends EventEmitter {
         data: videoInfo,
       };
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch metadata";
+
+      // Provide more helpful error messages for common issues
+      let userFriendlyError = errorMessage;
+
+      if (
+        errorMessage.includes("Cannot parse data") ||
+        errorMessage.includes("Unsupported URL")
+      ) {
+        userFriendlyError = `Unable to parse video data. This may be due to an outdated yt-dlp version. Please update yt-dlp and try again. Original error: ${errorMessage}`;
+      } else if (
+        errorMessage.includes("Video unavailable") ||
+        errorMessage.includes("Private video")
+      ) {
+        userFriendlyError = "This video is unavailable or private.";
+      } else if (errorMessage.includes("Sign in")) {
+        userFriendlyError =
+          "This video requires authentication. Please check if the video is accessible.";
+      }
+
       return {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to fetch metadata",
+        error: userFriendlyError,
       };
     }
   }

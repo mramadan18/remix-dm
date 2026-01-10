@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Input,
   Button,
@@ -9,17 +9,74 @@ import {
   CardBody,
   CardHeader,
   Divider,
+  Spinner,
+  Chip,
 } from "@heroui/react";
-import { FolderOpen, Moon, Sun, Monitor, Download } from "lucide-react";
+import {
+  FolderOpen,
+  Moon,
+  Sun,
+  Monitor,
+  Download,
+  RefreshCw,
+  Check,
+  AlertCircle,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 
 const Settings = () => {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
+  // yt-dlp binary state
+  const [binaryInfo, setBinaryInfo] = useState<{
+    path: string;
+    version: string | null;
+  } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<
+    "idle" | "success" | "error"
+  >("idle");
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const fetchBinaryInfo = useCallback(async () => {
+    try {
+      const result = await window.ipc.invoke("download:get-binary-info", null);
+      if (result.success && result.data) {
+        setBinaryInfo(result.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch binary info:", error);
+    }
+  }, []);
+
+  const handleUpdateYtDlp = async () => {
+    setIsUpdating(true);
+    setUpdateStatus("idle");
+    setUpdateError(null);
+
+    try {
+      const result = await window.ipc.invoke("download:update-binary", null);
+      if (result.success) {
+        setBinaryInfo(result.data);
+        setUpdateStatus("success");
+        setTimeout(() => setUpdateStatus("idle"), 3000);
+      } else {
+        setUpdateStatus("error");
+        setUpdateError(result.error || "Update failed");
+      }
+    } catch (error) {
+      setUpdateStatus("error");
+      setUpdateError(error instanceof Error ? error.message : "Update failed");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   useEffect(() => {
     setMounted(true);
-  }, []);
+    fetchBinaryInfo();
+  }, [fetchBinaryInfo]);
 
   return (
     <div className="w-full max-w-4xl mx-auto">
@@ -141,6 +198,91 @@ const Settings = () => {
               <span>Play sound on completion</span>
               <Switch size="sm" />
             </div>
+          </CardBody>
+        </Card>
+
+        {/* yt-dlp Binary Settings */}
+        <Card className="shadow-sm">
+          <CardHeader className="font-bold text-lg px-6 pt-6">
+            yt-dlp Engine
+          </CardHeader>
+          <CardBody className="px-6 pb-6 pt-2 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-sm">yt-dlp Version</span>
+                <span className="text-xs text-default-400">
+                  The core engine that powers video downloads
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                {binaryInfo?.version ? (
+                  <Chip size="sm" variant="flat" color="success">
+                    v{binaryInfo.version}
+                  </Chip>
+                ) : (
+                  <Chip size="sm" variant="flat" color="warning">
+                    Not installed
+                  </Chip>
+                )}
+              </div>
+            </div>
+
+            <Divider />
+
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-sm">Update yt-dlp</span>
+                <span className="text-xs text-default-400">
+                  Download the latest version to fix parsing issues
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {updateStatus === "success" && (
+                  <Chip
+                    size="sm"
+                    color="success"
+                    variant="flat"
+                    startContent={<Check size={14} />}
+                  >
+                    Updated!
+                  </Chip>
+                )}
+                {updateStatus === "error" && (
+                  <Chip
+                    size="sm"
+                    color="danger"
+                    variant="flat"
+                    startContent={<AlertCircle size={14} />}
+                  >
+                    {updateError || "Failed"}
+                  </Chip>
+                )}
+                <Button
+                  size="sm"
+                  color="primary"
+                  variant="flat"
+                  onPress={handleUpdateYtDlp}
+                  isLoading={isUpdating}
+                  startContent={!isUpdating && <RefreshCw size={16} />}
+                >
+                  {isUpdating ? "Updating..." : "Update Now"}
+                </Button>
+              </div>
+            </div>
+
+            {binaryInfo?.path && (
+              <>
+                <Divider />
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-default-400">
+                    Binary location:
+                  </span>
+                  <code className="text-xs text-default-500 bg-default-100 px-2 py-1 rounded break-all">
+                    {binaryInfo.path}
+                  </code>
+                </div>
+              </>
+            )}
           </CardBody>
         </Card>
 
