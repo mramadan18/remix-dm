@@ -576,6 +576,153 @@ export class VideoDownloadService extends EventEmitter {
   }
 
   /**
+   * Get quality label from video info and options for filename
+   */
+  private getQualityLabelForFilename(
+    videoInfo: VideoInfo | null,
+    quality: string | undefined
+  ): string | null {
+    if (!videoInfo || !quality) return null;
+
+    const qualityOption = videoInfo.qualityOptions?.find(
+      (opt) => opt.key === quality
+    );
+
+    if (!qualityOption) return null;
+
+    // Prefer quality field (e.g., "1080p", "720p")
+    if (qualityOption.quality) {
+      return qualityOption.quality;
+    }
+
+    // Fallback to key if it's a valid quality (not "best" or "bestaudio")
+    if (qualityOption.key && qualityOption.key !== "bestaudio") {
+      return qualityOption.key;
+    }
+
+    return null;
+  }
+
+  /**
+   * Generate filename template based on options and video info
+   */
+  private generateFilenameTemplate(
+    options: DownloadOptions,
+    videoInfo: VideoInfo | null,
+    qualityLabel: string | null
+  ): string {
+    const hasNonEnglish =
+      videoInfo?.title && /[^\x00-\x7F]/.test(videoInfo.title);
+
+    // User provided specific filename (no template)
+    if (options.filename && !options.filename.includes("%")) {
+      const needsSlugify = /[^\x00-\x7F]/.test(options.filename);
+
+      if (qualityLabel) {
+        const ext = path.extname(options.filename);
+        const nameWithoutExt = options.filename.replace(ext, "");
+        return sanitizeFilename(
+          `${nameWithoutExt}.${qualityLabel}${ext}`,
+          200,
+          needsSlugify
+        );
+      }
+
+      return sanitizeFilename(options.filename, 200, needsSlugify);
+    }
+
+    // User provided template
+    if (options.filename) {
+      return qualityLabel
+        ? options.filename.replace(/\.%\(ext\)s$/, `.${qualityLabel}.%(ext)s`)
+        : options.filename;
+    }
+
+    // Default template
+    const titleTemplate =
+      hasNonEnglish && videoInfo?.title
+        ? sanitizeFilename(videoInfo.title, 100, true).replace(/\.[^/.]+$/, "")
+        : "%(title).100s";
+
+    return qualityLabel
+      ? `${titleTemplate}.${qualityLabel}.%(ext)s`
+      : `${titleTemplate}.%(ext)s`;
+  }
+
+  /**
+   * Get initial total bytes from video info
+   */
+  private getInitialTotalBytes(
+    videoInfo: VideoInfo | null,
+    quality: string | undefined
+  ): number | null {
+    if (!videoInfo) return null;
+
+    // Try to get totalSize from the selected qualityOption
+    if (quality) {
+      const qualityOption = videoInfo.qualityOptions?.find(
+        (opt) => opt.key === quality
+      );
+      if (qualityOption?.totalSize) {
+        return qualityOption.totalSize;
+      }
+    }
+
+    // Fallback: get file size from qualityOptions
+    if (videoInfo.qualityOptions && videoInfo.qualityOptions.length > 0) {
+      const firstQualityOption =
+        videoInfo.qualityOptions.find(
+          (opt) => opt.totalSize && opt.key !== "bestaudio"
+        ) || videoInfo.qualityOptions[0];
+
+      if (firstQualityOption?.totalSize) {
+        return firstQualityOption.totalSize;
+      }
+    }
+
+    // Last resort: estimate from formats
+    if (!videoInfo.formats || videoInfo.formats.length === 0) {
+      return null;
+    }
+
+    const videoFormats = videoInfo.formats.filter((f) => f.hasVideo);
+    const audioFormats = videoInfo.formats.filter(
+      (f) => f.hasAudio && !f.hasVideo
+    );
+
+    let maxVideoSize = 0;
+    let maxAudioSize = 0;
+
+    videoFormats.forEach((f) => {
+      const size = f.filesize || f.filesizeApprox || 0;
+      if (size > maxVideoSize) maxVideoSize = size;
+    });
+
+    audioFormats.forEach((f) => {
+      const size = f.filesize || f.filesizeApprox || 0;
+      if (size > maxAudioSize) maxAudioSize = size;
+    });
+
+    // If we have separate video and audio, sum them
+    if (maxVideoSize > 0 && maxAudioSize > 0) {
+      return maxVideoSize + maxAudioSize;
+    }
+
+    if (maxVideoSize > 0) {
+      return maxVideoSize;
+    }
+
+    // Last resort: get file size from the first format that has it
+    const formatWithSize = videoInfo.formats.find(
+      (f) => f.filesize || f.filesizeApprox
+    );
+
+    return formatWithSize
+      ? formatWithSize.filesize || formatWithSize.filesizeApprox
+      : null;
+  }
+
+  /**
    * Start a new download
    */
   async startDownload(
@@ -598,156 +745,29 @@ export class VideoDownloadService extends EventEmitter {
     const downloadId = randomUUID();
     const outputDir = options.outputPath || getDownloadSubPath("videos");
 
-    // Ensure output directory exists (double-check)
+    // Ensure output directory exists
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Get quality label for filename
-    let qualityLabel: string | null = null;
-    if (videoInfo && options.quality) {
-      const qualityOption = videoInfo.qualityOptions?.find(
-        (opt) => opt.key === options.quality
-      );
+    // Get quality label and generate filename
+    const qualityLabel = this.getQualityLabelForFilename(
+      videoInfo,
+      options.quality
+    );
+    const filenameTemplate = this.generateFilenameTemplate(
+      options,
+      videoInfo,
+      qualityLabel
+    );
 
-      if (qualityOption) {
-        // Prefer quality field (e.g., "1080p", "720p")
-        if (qualityOption.quality) {
-          qualityLabel = qualityOption.quality;
-        }
-        // Fallback to key if it's a valid quality (not "best" or "bestaudio")
-        else if (qualityOption.key && qualityOption.key !== "bestaudio") {
-          qualityLabel = qualityOption.key;
-        }
-      }
-    }
+    // Get initial file size
+    const initialTotalBytes = this.getInitialTotalBytes(
+      videoInfo,
+      options.quality
+    );
 
-    // Check if filename needs slugification (Arabic or other non-English characters)
-    const hasNonEnglish =
-      videoInfo?.title && /[^\x00-\x7F]/.test(videoInfo.title);
-
-    // Generate filename template
-    let filenameTemplate: string;
-    if (options.filename && !options.filename.includes("%")) {
-      // User provided specific filename
-      const needsSlugify = /[^\x00-\x7F]/.test(options.filename);
-      if (qualityLabel) {
-        const ext = path.extname(options.filename);
-        const nameWithoutExt = options.filename.replace(ext, "");
-        filenameTemplate = sanitizeFilename(
-          `${nameWithoutExt}.${qualityLabel}${ext}`,
-          200,
-          needsSlugify
-        );
-      } else {
-        filenameTemplate = sanitizeFilename(
-          options.filename,
-          200,
-          needsSlugify
-        );
-      }
-    } else if (options.filename) {
-      // User provided template
-      filenameTemplate = qualityLabel
-        ? options.filename.replace(/\.%\(ext\)s$/, `.${qualityLabel}.%(ext)s`)
-        : options.filename;
-    } else {
-      // Default template
-      // If title has Arabic/non-English, we resolve the title now and slugify it
-      const titleTemplate =
-        hasNonEnglish && videoInfo?.title
-          ? sanitizeFilename(videoInfo.title, 100, true).replace(
-              /\.[^/.]+$/,
-              ""
-            )
-          : "%(title).100s";
-
-      filenameTemplate = qualityLabel
-        ? `${titleTemplate}.${qualityLabel}.%(ext)s`
-        : `${titleTemplate}.%(ext)s`;
-    }
-
-    // Build output path with template
-    // yt-dlp will replace %(title)s and %(ext)s with actual values and sanitize automatically
-    const outputFilePath = path.join(outputDir, filenameTemplate);
-
-    // Try to get initial file size from videoInfo
-    // Prefer using totalSize from qualityOption (which includes video + audio for DASH streams)
-    let initialTotalBytes: number | null = null;
-
-    if (videoInfo && options.quality) {
-      // Try to get totalSize from the selected qualityOption
-      const qualityOption = videoInfo.qualityOptions?.find(
-        (opt) => opt.key === options.quality
-      );
-
-      if (qualityOption && qualityOption.totalSize) {
-        initialTotalBytes = qualityOption.totalSize;
-      }
-    }
-
-    // Fallback: get file size from qualityOptions if specific qualityOption doesn't have totalSize
-    if (
-      !initialTotalBytes &&
-      videoInfo &&
-      videoInfo.qualityOptions &&
-      videoInfo.qualityOptions.length > 0
-    ) {
-      // Use the first qualityOption's totalSize (usually the best quality)
-      const firstQualityOption =
-        videoInfo.qualityOptions.find(
-          (opt) => opt.totalSize && opt.key !== "bestaudio"
-        ) || videoInfo.qualityOptions[0];
-
-      if (firstQualityOption && firstQualityOption.totalSize) {
-        initialTotalBytes = firstQualityOption.totalSize;
-      }
-    }
-
-    // Last resort: get file size from formats if qualityOptions don't have totalSize
-    if (
-      !initialTotalBytes &&
-      videoInfo &&
-      videoInfo.formats &&
-      videoInfo.formats.length > 0
-    ) {
-      // For DASH streams, we need to estimate by finding the largest video format
-      // and adding the best audio format size
-      const videoFormats = videoInfo.formats.filter((f) => f.hasVideo);
-      const audioFormats = videoInfo.formats.filter(
-        (f) => f.hasAudio && !f.hasVideo
-      );
-
-      let maxVideoSize = 0;
-      let maxAudioSize = 0;
-
-      videoFormats.forEach((f) => {
-        const size = f.filesize || f.filesizeApprox || 0;
-        if (size > maxVideoSize) maxVideoSize = size;
-      });
-
-      audioFormats.forEach((f) => {
-        const size = f.filesize || f.filesizeApprox || 0;
-        if (size > maxAudioSize) maxAudioSize = size;
-      });
-
-      // If we have separate video and audio, sum them
-      if (maxVideoSize > 0 && maxAudioSize > 0) {
-        initialTotalBytes = maxVideoSize + maxAudioSize;
-      } else if (maxVideoSize > 0) {
-        initialTotalBytes = maxVideoSize;
-      } else {
-        // Last resort: get file size from the first format that has it
-        const formatWithSize = videoInfo.formats.find(
-          (f) => f.filesize || f.filesizeApprox
-        );
-        if (formatWithSize) {
-          initialTotalBytes =
-            formatWithSize.filesize || formatWithSize.filesizeApprox;
-        }
-      }
-    }
-
+    // Create download item
     const downloadItem: DownloadItem = {
       id: downloadId,
       url: options.url,
@@ -775,10 +795,8 @@ export class VideoDownloadService extends EventEmitter {
       retryCount: 0,
     };
 
-    // Add to queue
+    // Add to queue and process
     this.downloadQueue.push(downloadItem);
-
-    // Process queue
     this.processQueue();
 
     return {
