@@ -418,6 +418,7 @@ export function useVideoInfo() {
     error,
     extract,
     reset,
+    setError,
   };
 }
 

@@ -40,8 +40,8 @@ const HomePage = () => {
     <div className="w-full max-w-4xl mx-auto">
       {/* Header */}
       <div className="text-center mb-10">
-        <h1 className="text-5xl font-black mb-4 bg-linear-to-r from-violet-600 via-fuchsia-500 to-emerald-500 bg-clip-text text-transparent inline-block tracking-tight">
-          Download with JokerDL
+        <h1 className="text-5xl font-black pb-2 leading-tight bg-linear-to-r from-violet-600 via-fuchsia-500 to-emerald-500 bg-clip-text text-transparent inline-block tracking-tight">
+          Single Video Download
         </h1>
         <p className="text-default-500 max-w-md mx-auto">
           Paste any video link to start downloading. Supports YouTube, TikTok,

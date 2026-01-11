@@ -51,8 +51,8 @@ const BulkMedia = () => {
     <div className="w-full max-w-4xl mx-auto">
       <div className="flex flex-col gap-6 mb-6">
         <div className="text-center">
-          <h1 className="text-4xl font-black mb-2 bg-linear-to-r from-violet-600 to-fuchsia-500 bg-clip-text text-transparent">
-            JokerDL Bulk Media
+          <h1 className="text-4xl font-black pb-1 bg-linear-to-r from-violet-600 to-fuchsia-500 bg-clip-text text-transparent">
+            Playlist Downloader
           </h1>
           <p className="text-default-500">
             Smart multi-item detection and bulk downloading for videos and

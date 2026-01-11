@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { useVideoInfo, startDownload, DownloadQuality } from "./useDownload";
 import {
   detectPlatform,
+  isPlaylistUrl,
   AUDIO_FORMAT_OPTIONS,
   FORMAT_OPTIONS,
   getAvailableQualityOptions,
@@ -48,7 +49,8 @@ export function useSingleDownload(): UseSingleDownloadReturn {
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
 
   // Video info hook
-  const { videoInfo, isLoading, error, extract, reset } = useVideoInfo();
+  const { videoInfo, isLoading, error, extract, reset, setError } =
+    useVideoInfo();
 
   // Computed values
   const platform = useMemo(() => {
@@ -110,9 +112,46 @@ export function useSingleDownload(): UseSingleDownloadReturn {
 
   // Handle URL fetch
   const handleFetch = useCallback(async () => {
-    if (!url.trim()) return;
-    await extract(url.trim());
-  }, [url, extract]);
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) return;
+
+    // 1. Basic URL validation
+    try {
+      new URL(trimmedUrl);
+    } catch {
+      reset();
+      setError("Please enter a valid URL (e.g., https://youtube.com/...)");
+      return;
+    }
+
+    // 2. Check if it's a playlist URL
+    if (isPlaylistUrl(trimmedUrl)) {
+      reset();
+      const platformInfo = detectPlatform(trimmedUrl);
+      const platformName = platformInfo ? platformInfo.name : "this platform";
+      setError(
+        `This link appears to be a ${platformName} playlist. Please use the 'Playlist/Channel' page for bulk downloads.`
+      );
+      return;
+    }
+
+    // 3. Optional: Check for supported platforms (warning instead of error to stay flexible)
+    // const platformInfo = detectPlatform(trimmedUrl);
+    // if (!platformInfo) {
+    //   // We can still try to extract, but we warn the user
+    // }
+
+    const result = await extract(trimmedUrl);
+
+    // 4. Check if the extracted info resulted in a playlist (sometimes detection fails but yt-dlp finds a list)
+    if (result.success && result.data?.isPlaylist) {
+      reset();
+      const platformName = result.data.extractorKey || "this platform";
+      setError(
+        `This link was detected as a ${platformName} playlist. Please use the 'Playlist/Channel' page for bulk downloads.`
+      );
+    }
+  }, [url, extract, reset, setError]);
 
   // Handle key press (Enter to fetch)
   const handleKeyPress = useCallback(

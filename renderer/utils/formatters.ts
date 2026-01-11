@@ -1,4 +1,5 @@
 import { DownloadQuality } from "../hooks/useDownload";
+export { PLATFORMS } from "../types/download";
 import { PLATFORMS, VideoFormat, VideoInfo } from "../types/download";
 
 /**
@@ -55,6 +56,37 @@ export function detectPlatform(
     // Invalid URL
   }
   return null;
+}
+
+/**
+ * Check if a URL is likely a playlist
+ */
+export function isPlaylistUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    const params = urlObj.searchParams;
+
+    // YouTube Playlist
+    if (hostname.includes("youtube.com") && params.has("list")) {
+      // Note: Some URLs have both watch?v= and list=, yt-dlp usually handles this depending on context.
+      // But for "Single Download", we might want to warn if it's primarily a list.
+      return true;
+    }
+
+    // Specific playlist paths for other platforms
+    const playlistPatterns = [
+      /playlist/i,
+      /album/i,
+      /set/i, // SoundCloud
+      /course/i,
+      /series/i,
+    ];
+
+    return playlistPatterns.some((pattern) => pattern.test(urlObj.pathname));
+  } catch {
+    return false;
+  }
 }
 
 /**
