@@ -7,6 +7,7 @@ import { EventEmitter } from "events";
 import { randomUUID } from "crypto";
 import * as path from "path";
 import * as fs from "fs";
+import { exec } from "child_process";
 import {
   getYtDlpWrap,
   ensureYtDlp,
@@ -864,6 +865,14 @@ export class VideoDownloadService extends EventEmitter {
 
       // Handle Progress
       eventEmitter.on("progress", (progress) => {
+        // IGNORE PROGRESS IF NOT DOWNLOADING
+        if (
+          item.status !== DownloadStatus.DOWNLOADING &&
+          item.status !== DownloadStatus.PENDING
+        ) {
+          return;
+        }
+
         const wasFirstProgress = !firstProgressReceived;
 
         // Mark that we've received the first progress event
@@ -934,6 +943,15 @@ export class VideoDownloadService extends EventEmitter {
 
       // Handle Events (to detect filename, merging, etc)
       eventEmitter.on("ytDlpEvent", (eventType, eventData) => {
+        // IGNORE EVENTS IF NOT DOWNLOADING OR MERGING
+        if (
+          item.status !== DownloadStatus.DOWNLOADING &&
+          item.status !== DownloadStatus.PENDING &&
+          item.status !== DownloadStatus.MERGING
+        ) {
+          return;
+        }
+
         // console.log(eventType, eventData);
 
         // Capture error messages from stderr
@@ -1107,7 +1125,10 @@ export class VideoDownloadService extends EventEmitter {
 
           this.completedDownloads.delete(item.id);
           this.emit("complete", item);
-        } else if (item.status !== DownloadStatus.CANCELLED) {
+        } else if (
+          item.status !== DownloadStatus.CANCELLED &&
+          item.status !== DownloadStatus.PAUSED
+        ) {
           item.status = DownloadStatus.FAILED;
           item.progress.status = DownloadStatus.FAILED;
 
@@ -1159,6 +1180,15 @@ export class VideoDownloadService extends EventEmitter {
 
       eventEmitter.on("error", (error) => {
         this.activeDownloads.delete(item.id);
+
+        // If manually paused or cancelled, don't report as error
+        if (
+          item.status === DownloadStatus.PAUSED ||
+          item.status === DownloadStatus.CANCELLED
+        ) {
+          return;
+        }
+
         item.status = DownloadStatus.FAILED;
 
         // Use stderr messages if available, otherwise use error message
@@ -1180,6 +1210,12 @@ export class VideoDownloadService extends EventEmitter {
         this.processQueue();
       });
     } catch (error) {
+      if (
+        (item.status as DownloadStatus) === DownloadStatus.PAUSED ||
+        (item.status as DownloadStatus) === DownloadStatus.CANCELLED
+      ) {
+        return;
+      }
       item.status = DownloadStatus.FAILED;
       item.error = error instanceof Error ? error.message : "Unknown error";
       item.progress.status = DownloadStatus.FAILED;
@@ -1196,15 +1232,120 @@ export class VideoDownloadService extends EventEmitter {
     const download = this.activeDownloads.get(downloadId);
     if (!download) return false;
 
-    // Use SIGTERM or SIGINT
-    download.process.kill("SIGTERM");
+    // 1. Set status FIRST so event listeners ignore coming events
     download.item.status = DownloadStatus.PAUSED;
     download.item.progress.status = DownloadStatus.PAUSED;
 
+    // 2. Kill the process and all its children
+    this.killProcess(download.process, downloadId);
+
+    // 3. Update queue and notify
     this.activeDownloads.delete(downloadId);
     this.emit("status-changed", download.item);
 
     return true;
+  }
+
+  /**
+   * Helper to kill process and its children robustly
+   */
+  private killProcess(process: any, downloadId: string): void {
+    if (!process) return;
+
+    const pid = process.pid;
+    if (!pid) {
+      try {
+        process.kill("SIGTERM");
+      } catch (e) {}
+      return;
+    }
+
+    if (global.process.platform === "win32") {
+      // Forcefully kill the process tree on Windows
+      exec(`taskkill /F /T /PID ${pid}`, (err) => {
+        if (err) {
+          console.warn(
+            `[VideoDownload] taskkill failed for PID ${pid}, falling back to process.kill:`,
+            err
+          );
+          try {
+            process.kill("SIGTERM");
+          } catch (e) {}
+        }
+      });
+    } else {
+      // Unix: send SIGTERM to the process group if possible, or just kill the process
+      try {
+        process.kill("SIGTERM");
+        // Fallback to SIGKILL after a short delay if needed?
+        // For now SIGTERM is usually enough on Unix
+      } catch (e) {
+        console.warn(`[VideoDownload] Failed to kill process ${pid}:`, e);
+      }
+    }
+  }
+
+  /**
+   * Cleanup any files (partial or complete) associated with a download
+   */
+  private cleanupFiles(item: DownloadItem): void {
+    if (!item.outputPath) return;
+
+    try {
+      // 1. If we have a concrete filename, try to delete it and its variations
+      if (item.filename && !item.filename.includes("%")) {
+        const fullPath = path.join(item.outputPath, item.filename);
+        const variations = [
+          fullPath,
+          `${fullPath}.part`,
+          `${fullPath}.ytdl`,
+          `${fullPath}.temp`,
+        ];
+
+        variations.forEach((file) => {
+          if (fs.existsSync(file)) {
+            try {
+              fs.unlinkSync(file);
+            } catch (err) {
+              console.warn(
+                `[VideoDownload] Failed to delete file ${file}:`,
+                err
+              );
+            }
+          }
+        });
+      }
+
+      // 2. Scan the directory for any related partial files (f137, f251 etc)
+      if (fs.existsSync(item.outputPath)) {
+        const files = fs.readdirSync(item.outputPath);
+
+        // Use current filename base as pattern
+        const fileBase = item.filename?.split(".")[0];
+
+        if (fileBase && fileBase.length > 3 && fileBase !== "%(title)s") {
+          files.forEach((file) => {
+            if (file.includes(fileBase)) {
+              if (
+                file.endsWith(".part") ||
+                file.endsWith(".ytdl") ||
+                file.includes(".f") ||
+                file.endsWith(".temp")
+              ) {
+                try {
+                  fs.unlinkSync(path.join(item.outputPath, file));
+                } catch (e) {}
+              }
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error(
+        `[VideoDownload] Error during file cleanup for ${item.id}:`,
+        error
+      );
+    }
   }
 
   /**
@@ -1230,7 +1371,14 @@ export class VideoDownloadService extends EventEmitter {
     if (active) {
       active.item.status = DownloadStatus.CANCELLED;
       active.item.progress.status = DownloadStatus.CANCELLED;
-      active.process.kill("SIGTERM");
+
+      // Kill the process and all its children
+      this.killProcess(active.process, downloadId);
+
+      // Clean up files after a short delay to ensure process is released
+      const itemToCleanup = { ...active.item };
+      setTimeout(() => this.cleanupFiles(itemToCleanup), 1000);
+
       this.activeDownloads.delete(downloadId);
       this.emit("status-changed", active.item);
       return true;
@@ -1242,6 +1390,10 @@ export class VideoDownloadService extends EventEmitter {
       const item = this.downloadQueue[queueIndex];
       item.status = DownloadStatus.CANCELLED;
       item.progress.status = DownloadStatus.CANCELLED;
+
+      // Also try to cleanup files for queued items in case it was restarted
+      this.cleanupFiles(item);
+
       this.emit("status-changed", item);
       return true;
     }
