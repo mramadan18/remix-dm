@@ -120,10 +120,22 @@ export const DownloadCard = ({
                 radius="none"
                 alt="Thumbnail"
                 src={item.videoInfo.thumbnail}
-                onClick={() => fullPath && onOpenFile(fullPath)}
+                onClick={() =>
+                  item.status === DownloadStatus.COMPLETED &&
+                  fullPath &&
+                  onOpenFile(fullPath)
+                }
                 classNames={{
-                  wrapper: "w-full h-full cursor-pointer",
-                  img: "object-cover w-full h-full hover:scale-115 transition-transform",
+                  wrapper: `w-full h-full ${
+                    item.status === DownloadStatus.COMPLETED
+                      ? "cursor-pointer"
+                      : "cursor-default"
+                  }`,
+                  img: `object-cover w-full h-full ${
+                    item.status === DownloadStatus.COMPLETED
+                      ? "hover:scale-115 transition-transform"
+                      : "opacity-70"
+                  }`,
                 }}
               />
             ) : (

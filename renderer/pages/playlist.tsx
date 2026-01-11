@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   PlaylistHeader,
   UrlInputCard,
@@ -6,14 +6,27 @@ import {
   PlaylistVideoList,
   PlaylistFooter,
 } from "../components/screens/Playlists";
-import { useVideoInfo } from "../hooks/useDownload";
+import {
+  useVideoInfo,
+  useDownloads,
+  getDownloadSubPath,
+} from "../hooks/useDownload";
 import { detectPlatform } from "../utils/formatters";
+import { DownloadQuality } from "../types/download";
+import { useRouter } from "next/router";
 
 const PlaylistPage = () => {
   const [url, setUrl] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const { videoInfo, isLoading, error, extract } = useVideoInfo();
+  const [selectedQuality, setSelectedQuality] = useState<string>(
+    DownloadQuality.QUALITY_1080P
+  );
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+
+  const { videoInfo, isLoading: isFetching, error, extract } = useVideoInfo();
+  const { addDownload } = useDownloads();
+  const router = useRouter();
 
   const playlistItems = videoInfo?.playlist?.videos || [];
   const platform = useMemo(() => detectPlatform(url), [url]);
@@ -61,6 +74,52 @@ const PlaylistPage = () => {
     }
   };
 
+  const handleDownloadSelected = async () => {
+    if (selected.length === 0) return;
+
+    setIsBulkDownloading(true);
+
+    const videosToDownload = playlistItems.filter((v) =>
+      selected.includes(v.id)
+    );
+
+    // Get the base playlists directory
+    const playlistsPathRes = await getDownloadSubPath("playlists");
+    let playlistPath = playlistsPathRes.success ? playlistsPathRes.data! : "";
+
+    // Add a subfolder with the playlist name
+    if (videoInfo?.playlist?.title && playlistPath) {
+      const cleanTitle = videoInfo.playlist.title
+        .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+        .trim();
+      playlistPath = `${playlistPath}/${cleanTitle}`;
+    }
+
+    // Add each video to the queue
+    for (const video of videosToDownload) {
+      // Create a minimal videoInfo object so the UI has a title and thumbnail
+      const minimalVideoInfo = {
+        id: video.id,
+        title: video.title,
+        thumbnail: video.thumbnail,
+        url: video.url,
+        webpage_url: video.url,
+        duration: video.duration,
+      } as any;
+
+      await addDownload(minimalVideoInfo, {
+        url: video.url,
+        quality: selectedQuality,
+        audioOnly: selectedQuality === DownloadQuality.AUDIO_ONLY,
+        format: selectedQuality === DownloadQuality.AUDIO_ONLY ? "mp3" : "mp4",
+        outputPath: playlistPath,
+      });
+    }
+
+    setIsBulkDownloading(false);
+    router.push("/downloads");
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto">
       <div className="flex flex-col gap-6 mb-6">
@@ -69,7 +128,7 @@ const PlaylistPage = () => {
           url={url}
           onUrlChange={setUrl}
           onFetch={handleFetch}
-          isLoading={isLoading}
+          isLoading={isFetching}
           platform={platform}
           onKeyPress={handleKeyPress}
         />
@@ -104,11 +163,17 @@ const PlaylistPage = () => {
             onToggleItem={toggleSelect}
           />
 
-          <PlaylistFooter selectedCount={selected.length} />
+          <PlaylistFooter
+            selectedCount={selected.length}
+            onDownload={handleDownloadSelected}
+            isLoading={isBulkDownloading}
+            selectedQuality={selectedQuality}
+            onQualityChange={setSelectedQuality}
+          />
         </div>
       )}
 
-      {videoInfo && !videoInfo.playlist && !isLoading && (
+      {videoInfo && !videoInfo.playlist && !isFetching && (
         <div className="text-center py-12 text-default-500">
           This URL doesn't seem to be a playlist or doesn't have any items.
         </div>

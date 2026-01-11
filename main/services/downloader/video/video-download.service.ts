@@ -516,15 +516,20 @@ export class VideoDownloadService extends EventEmitter {
     // Merge format for video+audio
     // CRITICAL: yt-dlp requires ffmpeg to merge video and audio streams
     if (!options.audioOnly) {
-      // Specify output format (container)
-      args.push("--merge-output-format", options.format || "mp4");
+      const outputFormat = options.format || "mp4";
+      args.push("--merge-output-format", outputFormat);
 
       // Remove intermediate files after successful merge
       args.push("--no-keep-video");
 
-      // Just copy streams without re-encoding (fast)
-      // Format selector already prefers h264 compatible formats
-      args.push("--postprocessor-args", "ffmpeg:-c copy");
+      // FIX for "Postprocessing: Stream #1:0 -> #0:1 (copy)" error
+      // This error usually happens when trying to copy an incompatible audio codec (like Opus) into MP4.
+      // We copy the video (fast) but re-encode the audio to AAC (very compatible with MP4).
+      if (outputFormat === "mp4") {
+        args.push("--postprocessor-args", "ffmpeg:-c:v copy -c:a aac");
+      } else {
+        args.push("--postprocessor-args", "ffmpeg:-c copy");
+      }
     }
 
     console.log("[buildArgs] Final args:", args.join(" "));
@@ -643,10 +648,12 @@ export class VideoDownloadService extends EventEmitter {
     }
 
     // Default template
-    const titleTemplate =
-      hasNonEnglish && videoInfo?.title
-        ? sanitizeFilename(videoInfo.title, 100, true).replace(/\.[^/.]+$/, "")
-        : "%(title).100s";
+    const titleTemplate = videoInfo?.title
+      ? sanitizeFilename(videoInfo.title, 100, hasNonEnglish).replace(
+          /\.[^/.]+$/,
+          ""
+        )
+      : "%(title).100s";
 
     return qualityLabel
       ? `${titleTemplate}.${qualityLabel}.%(ext)s`
@@ -1027,105 +1034,126 @@ export class VideoDownloadService extends EventEmitter {
           item.progress.status = DownloadStatus.COMPLETED;
           item.progress.progress = 100;
 
-          // Try to get actual file size if totalBytes is not available or downloadedBytes is 0
-          if (
-            !item.progress.totalBytes ||
-            item.progress.downloadedBytes === 0 ||
-            item.filename?.includes("%") // Also check if filename is not resolved
-          ) {
-            try {
-              // RESOLVE FILENAME: If filename still has template placeholders (like %(ext)s), find the real file
-              if (item.filename?.includes("%")) {
-                const outputDir = item.outputPath;
-                if (fs.existsSync(outputDir)) {
-                  // Get the base name without the extension placeholder
-                  // e.g. "my-video.1080p.%(ext)s" -> "my-video.1080p."
-                  const basePattern = item.filename.split(".%")[0];
+          try {
+            const outputDir = item.outputPath;
+            const currentFilename = item.filename || item.progress.filename;
+            let finalFileResolved = false;
 
-                  const files = fs.readdirSync(outputDir);
+            // 1. RESOLVE FILENAME: Check if current filename is valid and exists
+            // If it includes %, or has a format ID pattern (.f134, etc), or doesn't exist
+            const isIntermediate =
+              currentFilename && /\.(f\d+|temp|part)$/.test(currentFilename);
+            const exists =
+              currentFilename &&
+              !currentFilename.includes("%") &&
+              fs.existsSync(path.join(outputDir, currentFilename));
 
-                  // Find a file that starts with our base pattern
-                  const matchingFile = files.find(
-                    (f) =>
-                      f.startsWith(basePattern) &&
-                      !f.endsWith(".part") &&
-                      !f.endsWith(".ytdl")
+            if (!exists || isIntermediate || currentFilename?.includes("%")) {
+              console.log(
+                `[VideoDownload] Verifying final filename for ${item.id}...`
+              );
+
+              if (fs.existsSync(outputDir)) {
+                // Get the base name pattern from the template or current filename
+                // e.g. "video.1080p.%(ext)s" -> "video.1080p."
+                // e.g. "video.f134.mp4" -> "video."
+                let basePattern = "";
+                if (currentFilename?.includes("%")) {
+                  basePattern = currentFilename.split(".%")[0];
+                } else if (currentFilename) {
+                  // Try to strip known intermediate suffixes
+                  basePattern = currentFilename.replace(
+                    /\.(f\d+|temp|part|ytdl).*$/,
+                    ""
                   );
-
-                  if (matchingFile) {
-                    console.log(
-                      `[VideoDownload] Resolved filename from disk: ${matchingFile}`
-                    );
-                    item.filename = matchingFile;
-                    item.progress.filename = matchingFile;
-                  }
                 }
-              }
 
-              // First, try to use the filename if we have it
-              if (item.progress.filename || item.filename) {
-                const filename = item.progress.filename || item.filename;
-                // Double check we don't hold a template
-                if (filename && !filename.includes("%")) {
-                  const filePath = path.join(item.outputPath, filename);
-                  if (fs.existsSync(filePath)) {
-                    const stats = fs.statSync(filePath);
-                    if (stats.size > 0) {
-                      item.progress.totalBytes = stats.size;
-                      item.progress.downloadedBytes = stats.size;
-                    }
-                  }
-                }
-              }
-
-              // If we still don't have the size, try to find the most recently modified file
-              if (
-                !item.progress.totalBytes ||
-                item.progress.downloadedBytes === 0
-              ) {
-                const outputDir = item.outputPath;
-                if (fs.existsSync(outputDir)) {
+                if (basePattern) {
                   const files = fs.readdirSync(outputDir);
-                  // Find the most recently modified file (likely the downloaded file)
-                  const fileStats = files
-                    .map((file) => {
-                      const filePath = path.join(outputDir, file);
+                  // Find a file that starts with our base pattern and is not a part file
+                  // Sort by mtime to get the newest match
+                  const matchingFiles = files
+                    .filter(
+                      (f) =>
+                        f.startsWith(basePattern) &&
+                        !/\.(part|ytdl|f\d+)$/.test(f)
+                    )
+                    .map((f) => ({
+                      name: f,
+                      stats: fs.statSync(path.join(outputDir, f)),
+                    }))
+                    .sort(
+                      (a, b) =>
+                        b.stats.mtime.getTime() - a.stats.mtime.getTime()
+                    );
+
+                  if (matchingFiles.length > 0) {
+                    const bestMatch = matchingFiles[0].name;
+                    console.log(
+                      `[VideoDownload] Resolved final filename: ${bestMatch}`
+                    );
+                    item.filename = bestMatch;
+                    item.progress.filename = bestMatch;
+                    finalFileResolved = true;
+                  }
+                }
+
+                // If still not found, try finding the most recent file in the directory
+                if (!finalFileResolved) {
+                  const files = fs.readdirSync(outputDir);
+                  const recentFiles = files
+                    .map((f) => ({ name: f, path: path.join(outputDir, f) }))
+                    .map((f) => {
                       try {
-                        const stats = fs.statSync(filePath);
-                        // Skip directories and very small files (likely not the video)
-                        if (stats.isFile() && stats.size > 1024) {
-                          return {
-                            path: filePath,
-                            size: stats.size,
-                            mtime: stats.mtime,
-                          };
-                        }
-                        return null;
+                        const stats = fs.statSync(f.path);
+                        return stats.isFile() && stats.size > 1024 * 1024
+                          ? { ...f, stats }
+                          : null;
                       } catch {
                         return null;
                       }
                     })
-                    .filter((stat) => stat !== null)
-                    .sort((a, b) => b!.mtime.getTime() - a!.mtime.getTime());
+                    .filter((f) => f !== null)
+                    .sort(
+                      (a, b) =>
+                        b!.stats.mtime.getTime() - a!.stats.mtime.getTime()
+                    );
 
-                  if (fileStats.length > 0 && fileStats[0]) {
-                    const actualSize = fileStats[0].size;
-                    if (actualSize > 0) {
-                      item.progress.totalBytes = actualSize;
-                      item.progress.downloadedBytes = actualSize;
+                  if (recentFiles.length > 0 && recentFiles[0]) {
+                    // Only use it if it's very recent (last 30 seconds)
+                    const now = new Date().getTime();
+                    if (now - recentFiles[0].stats.mtime.getTime() < 30000) {
+                      item.filename = recentFiles[0].name;
+                      item.progress.filename = recentFiles[0].name;
+                      finalFileResolved = true;
                     }
                   }
                 }
               }
-            } catch (error) {
-              console.warn("[VideoDownload] Failed to get file size:", error);
             }
-          } else if (
-            item.progress.totalBytes &&
-            item.progress.downloadedBytes === 0
-          ) {
-            // If we have totalBytes but downloadedBytes is 0, set it to totalBytes
-            item.progress.downloadedBytes = item.progress.totalBytes;
+
+            // 2. UPDATE PROGRESS/SIZE: Get actual file size
+            const resolvedFilename = item.filename || item.progress.filename;
+            if (resolvedFilename && !resolvedFilename.includes("%")) {
+              const filePath = path.join(outputDir, resolvedFilename);
+              if (fs.existsSync(filePath)) {
+                const stats = fs.statSync(filePath);
+                if (stats.size > 0) {
+                  item.progress.totalBytes = stats.size;
+                  item.progress.downloadedBytes = stats.size;
+                }
+              }
+            } else if (
+              item.progress.totalBytes &&
+              item.progress.downloadedBytes === 0
+            ) {
+              item.progress.downloadedBytes = item.progress.totalBytes;
+            }
+          } catch (error) {
+            console.warn(
+              "[VideoDownload] Exception during completion details gathering:",
+              error
+            );
           }
 
           this.completedDownloads.delete(item.id);

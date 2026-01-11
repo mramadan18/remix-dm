@@ -181,7 +181,7 @@ export function isFfmpegAvailable(): boolean {
   if (!ffmpegPath) {
     return false;
   }
-  
+
   try {
     return fs.existsSync(ffmpegPath);
   } catch {

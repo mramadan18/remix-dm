@@ -208,6 +208,26 @@ export async function getDefaultDownloadPath(): Promise<ApiResponse<string>> {
 }
 
 /**
+ * Get download sub-path for specific type
+ */
+export async function getDownloadSubPath(
+  type: "videos" | "audios" | "playlists"
+): Promise<ApiResponse<string>> {
+  try {
+    const result = await window.ipc.invoke("download:get-sub-path", type);
+    return result as ApiResponse<string>;
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to get download sub-path",
+    };
+  }
+}
+
+/**
  * Ensure yt-dlp binary is available
  */
 export async function ensureBinary(): Promise<
