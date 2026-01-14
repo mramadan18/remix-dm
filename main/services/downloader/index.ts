@@ -8,3 +8,6 @@ export * from "./types";
 
 // Video services
 export * from "./video";
+
+// Direct download services
+export * from "./direct";

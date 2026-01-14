@@ -22,6 +22,9 @@ import {
   formatSpeed,
   formatETA,
   parseBytes,
+  deleteFileWithRetry,
+  renameFileForDeletion,
+  scheduleFileDeletion,
 } from "../../utils/file-utils";
 import {
   VideoInfo,
@@ -585,82 +588,6 @@ export class VideoDownloadService extends EventEmitter {
   }
 
   /**
-   * Get quality label from video info and options for filename
-   */
-  private getQualityLabelForFilename(
-    videoInfo: VideoInfo | null,
-    quality: string | undefined
-  ): string | null {
-    if (!videoInfo || !quality) return null;
-
-    const qualityOption = videoInfo.qualityOptions?.find(
-      (opt) => opt.key === quality
-    );
-
-    if (!qualityOption) return null;
-
-    // Prefer quality field (e.g., "1080p", "720p")
-    if (qualityOption.quality) {
-      return qualityOption.quality;
-    }
-
-    // Fallback to key if it's a valid quality (not "best" or "bestaudio")
-    if (qualityOption.key && qualityOption.key !== "bestaudio") {
-      return qualityOption.key;
-    }
-
-    return null;
-  }
-
-  /**
-   * Generate filename template based on options and video info
-   */
-  private generateFilenameTemplate(
-    options: DownloadOptions,
-    videoInfo: VideoInfo | null,
-    qualityLabel: string | null
-  ): string {
-    const hasNonEnglish =
-      videoInfo?.title && /[^\x00-\x7F]/.test(videoInfo.title);
-
-    // User provided specific filename (no template)
-    if (options.filename && !options.filename.includes("%")) {
-      const needsSlugify = /[^\x00-\x7F]/.test(options.filename);
-
-      if (qualityLabel) {
-        const ext = path.extname(options.filename);
-        const nameWithoutExt = options.filename.replace(ext, "");
-        return sanitizeFilename(
-          `${nameWithoutExt}.${qualityLabel}${ext}`,
-          200,
-          needsSlugify
-        );
-      }
-
-      return sanitizeFilename(options.filename, 200, needsSlugify);
-    }
-
-    // User provided template
-    if (options.filename) {
-      return qualityLabel
-        ? options.filename.replace(/\.%\(ext\)s$/, `.${qualityLabel}.%(ext)s`)
-        : options.filename;
-    }
-
-    // Default template
-    const titleTemplate = videoInfo?.title
-      ? sanitizeFilename(videoInfo.title, 100, hasNonEnglish).replace(
-          /\.[^/.]+$/,
-          ""
-        )
-      : "%(title).100s";
-
-    return qualityLabel
-      ? `${titleTemplate}.${qualityLabel}.%(ext)s`
-      : `${titleTemplate}.%(ext)s`;
-  }
-
-  /**
    * Get initial total bytes from video info
    */
   private getInitialTotalBytes(
@@ -763,16 +690,16 @@ export class VideoDownloadService extends EventEmitter {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Get quality label and generate filename
-    const qualityLabel = this.getQualityLabelForFilename(
-      videoInfo,
-      options.quality
-    );
-    const filenameTemplate = this.generateFilenameTemplate(
-      options,
-      videoInfo,
-      qualityLabel
-    );
+    // Use raw title from platform, yt-dlp will handle basic OS sanitization
+    // We only sanitize if absolutely necessary (e.g. user provided custom name)
+    let filenameTemplate: string;
+    if (options.filename) {
+      filenameTemplate = options.filename;
+    } else {
+      // Default template: Title + extension
+      // %(title)s is the standard yt-dlp placeholder for the platform title
+      filenameTemplate = "%(title)s.%(ext)s";
+    }
 
     // Get initial file size
     const initialTotalBytes = this.getInitialTotalBytes(
@@ -1321,8 +1248,13 @@ export class VideoDownloadService extends EventEmitter {
   /**
    * Cleanup any files (partial or complete) associated with a download
    */
-  private cleanupFiles(item: DownloadItem): void {
+  private async cleanupFiles(item: DownloadItem): Promise<void> {
     if (!item.outputPath) return;
+
+    // Use aggressive retry strategy on Windows
+    const isWindows = process.platform === "win32";
+    const maxRetries = isWindows ? 15 : 10;
+    const retryDelay = isWindows ? 2000 : 3000;
 
     try {
       // 1. If we have a concrete filename, try to delete it and its variations
@@ -1335,18 +1267,54 @@ export class VideoDownloadService extends EventEmitter {
           `${fullPath}.temp`,
         ];
 
-        variations.forEach((file) => {
+        for (const file of variations) {
           if (fs.existsSync(file)) {
-            try {
-              fs.unlinkSync(file);
-            } catch (err) {
-              console.warn(
-                `[VideoDownload] Failed to delete file ${file}:`,
-                err
+            // On Windows, try rename first to break file handle locks
+            if (isWindows) {
+              const renamedPath = renameFileForDeletion(file);
+              if (renamedPath) {
+                console.log(
+                  `[VideoDownload] Renamed file for deletion: ${file} -> ${renamedPath}`
+                );
+                // Try to delete immediately
+                const immediateSuccess = await deleteFileWithRetry(
+                  renamedPath,
+                  5,
+                  1000
+                );
+                if (!immediateSuccess) {
+                  // Schedule for later deletion
+                  scheduleFileDeletion(renamedPath, 15000);
+                  console.log(
+                    `[VideoDownload] Scheduled deletion for: ${renamedPath}`
+                  );
+                }
+              } else {
+                // Rename failed, try normal deletion
+                const success = await deleteFileWithRetry(
+                  file,
+                  maxRetries,
+                  retryDelay
+                );
+                if (!success) {
+                  // Final attempt after longer wait
+                  await new Promise((resolve) => setTimeout(resolve, 5000));
+                  await deleteFileWithRetry(file, 5, 2000);
+                }
+              }
+            } else {
+              // Non-Windows: normal deletion
+              const success = await deleteFileWithRetry(
+                file,
+                maxRetries,
+                retryDelay
               );
+              if (success) {
+                console.log(`[VideoDownload] Deleted file: ${file}`);
+              }
             }
           }
-        });
+        }
       }
 
       // 2. Scan the directory for any related partial files (f137, f251 etc)
@@ -1357,7 +1325,7 @@ export class VideoDownloadService extends EventEmitter {
         const fileBase = item.filename?.split(".")[0];
 
         if (fileBase && fileBase.length > 3 && fileBase !== "%(title)s") {
-          files.forEach((file) => {
+          for (const file of files) {
             if (file.includes(fileBase)) {
               if (
                 file.endsWith(".part") ||
@@ -1365,12 +1333,14 @@ export class VideoDownloadService extends EventEmitter {
                 file.includes(".f") ||
                 file.endsWith(".temp")
               ) {
-                try {
-                  fs.unlinkSync(path.join(item.outputPath, file));
-                } catch (e) {}
+                await deleteFileWithRetry(
+                  path.join(item.outputPath, file),
+                  maxRetries,
+                  retryDelay
+                );
               }
             }
-          });
+          }
         }
       }
     } catch (error) {
@@ -1398,7 +1368,7 @@ export class VideoDownloadService extends EventEmitter {
   /**
    * Cancel a download
    */
-  cancelDownload(downloadId: string): boolean {
+  async cancelDownload(downloadId: string): Promise<boolean> {
     // Check if active
     const active = this.activeDownloads.get(downloadId);
     if (active) {
@@ -1408,12 +1378,27 @@ export class VideoDownloadService extends EventEmitter {
       // Kill the process and all its children
       this.killProcess(active.process, downloadId);
 
-      // Clean up files after a short delay to ensure process is released
-      const itemToCleanup = { ...active.item };
-      setTimeout(() => this.cleanupFiles(itemToCleanup), 1000);
-
       this.activeDownloads.delete(downloadId);
-      this.emit("status-changed", active.item);
+
+      // Remove from queue
+      const qIdx = this.downloadQueue.findIndex((d) => d.id === downloadId);
+      if (qIdx !== -1) {
+        this.downloadQueue.splice(qIdx, 1);
+      }
+
+      this.emit("item-removed", downloadId);
+
+      // Wait longer for OS to release file locks (especially on Windows)
+      const isWindows = process.platform === "win32";
+      const waitTime = isWindows ? 4000 : 2000;
+
+      // Background cleanup
+      (async () => {
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+        const itemToCleanup = { ...active.item };
+        await this.cleanupFiles(itemToCleanup);
+      })();
+
       return true;
     }
 
@@ -1421,13 +1406,27 @@ export class VideoDownloadService extends EventEmitter {
     const queueIndex = this.downloadQueue.findIndex((d) => d.id === downloadId);
     if (queueIndex !== -1) {
       const item = this.downloadQueue[queueIndex];
+      const terminalState =
+        item.status === DownloadStatus.COMPLETED ||
+        item.status === DownloadStatus.FAILED ||
+        item.status === DownloadStatus.CANCELLED;
+
+      // If it's a finished job, remove it from queue
+      if (terminalState) {
+        this.downloadQueue.splice(queueIndex, 1);
+        this.emit("item-removed", downloadId);
+        return true;
+      }
+
       item.status = DownloadStatus.CANCELLED;
       item.progress.status = DownloadStatus.CANCELLED;
 
       // Also try to cleanup files for queued items in case it was restarted
-      this.cleanupFiles(item);
+      await this.cleanupFiles(item);
 
-      this.emit("status-changed", item);
+      // Remove from queue after cancellation
+      this.downloadQueue.splice(queueIndex, 1);
+      this.emit("item-removed", downloadId);
       return true;
     }
 
@@ -1456,7 +1455,8 @@ export class VideoDownloadService extends EventEmitter {
     this.downloadQueue = this.downloadQueue.filter(
       (d) =>
         d.status !== DownloadStatus.COMPLETED &&
-        d.status !== DownloadStatus.CANCELLED
+        d.status !== DownloadStatus.CANCELLED &&
+        d.status !== DownloadStatus.FAILED
     );
     return before - this.downloadQueue.length;
   }

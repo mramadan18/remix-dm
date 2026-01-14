@@ -14,7 +14,7 @@ const Sidebar = () => {
   const router = useRouter();
 
   const menuItems = [
-    { label: "Single Download", icon: Download, path: "/home" },
+    { label: "Quick Download", icon: Download, path: "/home" },
     { label: "Playlist/Channel", icon: Library, path: "/playlist" },
     { label: "Multiple Links", icon: Layers, path: "/multi" },
     { label: "Downloads", icon: HardDrive, path: "/downloads" },

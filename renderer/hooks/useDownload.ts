@@ -13,6 +13,8 @@ import {
   DownloadQuality,
   ApiResponse,
   DownloadIpcChannels,
+  LinkTypeResult,
+  DetectionMode,
 } from "../types/download";
 
 /**
@@ -211,7 +213,14 @@ export async function getDefaultDownloadPath(): Promise<ApiResponse<string>> {
  * Get download sub-path for specific type
  */
 export async function getDownloadSubPath(
-  type: "videos" | "audios" | "playlists"
+  type:
+    | "videos"
+    | "audios"
+    | "playlists"
+    | "others"
+    | "programs"
+    | "compressed"
+    | "documents"
 ): Promise<ApiResponse<string>> {
   try {
     const result = await window.ipc.invoke("download:get-sub-path", type);
@@ -223,6 +232,51 @@ export async function getDownloadSubPath(
         error instanceof Error
           ? error.message
           : "Failed to get download sub-path",
+    };
+  }
+}
+
+/**
+ * Detect link type (direct download vs video)
+ */
+export async function detectLinkType(
+  url: string,
+  mode: DetectionMode = "auto"
+): Promise<ApiResponse<LinkTypeResult>> {
+  try {
+    const result = await window.ipc.invoke(
+      DownloadIpcChannels.DETECT_LINK_TYPE,
+      { url, mode }
+    );
+    return result as ApiResponse<LinkTypeResult>;
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to detect link type",
+    };
+  }
+}
+
+/**
+ * Start a direct download (using aria2)
+ */
+export async function startDirectDownload(
+  options: DownloadOptions
+): Promise<ApiResponse<DownloadItem>> {
+  try {
+    const result = await window.ipc.invoke(
+      DownloadIpcChannels.START_DIRECT_DOWNLOAD,
+      options
+    );
+    return result as ApiResponse<DownloadItem>;
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to start direct download",
     };
   }
 }
@@ -318,11 +372,19 @@ export function useDownloads() {
       }
     );
 
+    const unsubRemoved = window.ipc.on(
+      DownloadIpcChannels.DOWNLOAD_REMOVED,
+      (downloadId) => {
+        setDownloads((prev) => prev.filter((d) => d.id !== downloadId));
+      }
+    );
+
     return () => {
       unsubProgress();
       unsubComplete();
       unsubError();
       unsubStatusChanged();
+      unsubRemoved();
     };
   }, []);
 
@@ -357,7 +419,8 @@ export function useDownloads() {
         prev.filter(
           (d) =>
             d.status !== DownloadStatus.COMPLETED &&
-            d.status !== DownloadStatus.CANCELLED
+            d.status !== DownloadStatus.CANCELLED &&
+            d.status !== DownloadStatus.FAILED
         )
       );
     }
@@ -434,7 +497,9 @@ export function useVideoInfo() {
 
   return {
     videoInfo,
+    setVideoInfo,
     isLoading,
+    setIsLoading,
     error,
     extract,
     reset,
@@ -442,6 +507,43 @@ export function useVideoInfo() {
   };
 }
 
+/**
+ * Hook for video actions
+ */
+export function useVideoActions() {
+  const getInfo = useCallback(async (url: string) => {
+    return extractVideoInfo(url);
+  }, []);
+
+  const start = useCallback(
+    async (videoInfo: VideoInfo | null, options: DownloadOptions) => {
+      return startDownload(videoInfo, options);
+    },
+    []
+  );
+
+  const startDirect = useCallback(async (options: DownloadOptions) => {
+    return startDirectDownload(options);
+  }, []);
+
+  const detect = useCallback(async (url: string) => {
+    return detectLinkType(url);
+  }, []);
+
+  return {
+    extractVideoInfo: getInfo,
+    startDownload: start,
+    startDirectDownload: startDirect,
+    detectLinkType: detect,
+  };
+}
+
 // Re-export types
-export type { VideoInfo, DownloadOptions, DownloadItem, DownloadProgress };
+export type {
+  VideoInfo,
+  DownloadOptions,
+  DownloadItem,
+  DownloadProgress,
+  LinkTypeResult,
+};
 export { DownloadStatus, DownloadQuality };

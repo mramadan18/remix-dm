@@ -132,6 +132,11 @@ export enum DownloadStatus {
 }
 
 /**
+ * URL Detection modes
+ */
+export type DetectionMode = "auto" | "direct" | "video";
+
+/**
  * Download quality presets
  */
 export enum DownloadQuality {
@@ -153,7 +158,7 @@ export interface DownloadOptions {
   url: string;
   outputPath: string;
   filename?: string;
-  quality: DownloadQuality | string;
+  quality?: DownloadQuality | string;
   format?: string; // Specific format ID or format selector
   audioOnly?: boolean;
   subtitles?: {
@@ -317,6 +322,8 @@ export const DownloadIpcChannels = {
   // Requests from Renderer to Main
   EXTRACT_VIDEO_INFO: "download:extract-video-info",
   START_DOWNLOAD: "download:start",
+  START_DIRECT_DOWNLOAD: "download:start-direct",
+  DETECT_LINK_TYPE: "download:detect-link-type",
   PAUSE_DOWNLOAD: "download:pause",
   RESUME_DOWNLOAD: "download:resume",
   CANCEL_DOWNLOAD: "download:cancel",
@@ -329,6 +336,7 @@ export const DownloadIpcChannels = {
   DOWNLOAD_COMPLETE: "download:complete",
   DOWNLOAD_ERROR: "download:error",
   DOWNLOAD_STATUS_CHANGED: "download:status-changed",
+  DOWNLOAD_REMOVED: "download:removed",
   VIDEO_INFO_EXTRACTED: "download:video-info-extracted",
 } as const;
 

@@ -93,7 +93,14 @@ const DownloadsPage = () => {
         isResumeDisabled={
           !downloads.some((d) => d.status === DownloadStatus.PAUSED)
         }
-        isClearDisabled={completedDownloads.length === 0}
+        isClearDisabled={
+          !downloads.some(
+            (d) =>
+              d.status === DownloadStatus.COMPLETED ||
+              d.status === DownloadStatus.FAILED ||
+              d.status === DownloadStatus.CANCELLED
+          )
+        }
       />
 
       {error && (

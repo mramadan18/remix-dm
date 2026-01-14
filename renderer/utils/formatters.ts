@@ -90,6 +90,29 @@ export function isPlaylistUrl(url: string): boolean {
 }
 
 /**
+ * Extract filename from URL
+ */
+export function getFilenameFromUrl(url: string): string | null {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const parts = pathname.split("/");
+    const lastPart = parts[parts.length - 1];
+
+    if (lastPart && lastPart.includes(".") && lastPart.length > 3) {
+      try {
+        return decodeURIComponent(lastPart);
+      } catch {
+        return lastPart;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
  * Extract available quality options from video formats
  */
 export function getAvailableQualityOptions(

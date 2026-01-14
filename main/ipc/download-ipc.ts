@@ -11,6 +11,7 @@ import {
   DownloadItem,
   DownloadProgress,
   ApiResponse,
+  DetectionMode,
 } from "../services/downloader/types";
 import {
   extractVideoInfo,
@@ -19,6 +20,11 @@ import {
   isUrlSupported,
 } from "../services/downloader/video/video-info.service";
 import { videoDownloader } from "../services/downloader/video/video-download.service";
+import {
+  directDownloader,
+  detectLinkType,
+  LinkTypeResult,
+} from "../services/downloader/direct";
 import {
   ensureYtDlp,
   getBinaryInfo,
@@ -136,7 +142,14 @@ export function initializeDownloadIpc(): void {
     DownloadIpcChannels.PAUSE_DOWNLOAD,
     async (_, downloadId: string): Promise<ApiResponse<boolean>> => {
       try {
-        const success = videoDownloader.pauseDownload(downloadId);
+        // Try video downloader first
+        let success = videoDownloader.pauseDownload(downloadId);
+
+        // If not found or failed, try direct downloader
+        if (!success) {
+          success = await directDownloader.pauseDownload(downloadId);
+        }
+
         return { success, data: success };
       } catch (error) {
         return {
@@ -154,7 +167,14 @@ export function initializeDownloadIpc(): void {
     DownloadIpcChannels.RESUME_DOWNLOAD,
     async (_, downloadId: string): Promise<ApiResponse<boolean>> => {
       try {
-        const success = videoDownloader.resumeDownload(downloadId);
+        // Try video downloader first
+        let success = videoDownloader.resumeDownload(downloadId);
+
+        // If not found or failed, try direct downloader
+        if (!success) {
+          success = await directDownloader.resumeDownload(downloadId);
+        }
+
         return { success, data: success };
       } catch (error) {
         return {
@@ -172,7 +192,14 @@ export function initializeDownloadIpc(): void {
     DownloadIpcChannels.CANCEL_DOWNLOAD,
     async (_, downloadId: string): Promise<ApiResponse<boolean>> => {
       try {
-        const success = videoDownloader.cancelDownload(downloadId);
+        // Try video downloader first
+        let success = await videoDownloader.cancelDownload(downloadId);
+
+        // If not found or failed, try direct downloader
+        if (!success) {
+          success = await directDownloader.cancelDownload(downloadId);
+        }
+
         return { success, data: success };
       } catch (error) {
         return {
@@ -193,7 +220,14 @@ export function initializeDownloadIpc(): void {
       downloadId: string
     ): Promise<ApiResponse<DownloadItem | null>> => {
       try {
-        const item = videoDownloader.getDownloadStatus(downloadId);
+        // Check video downloads
+        let item = videoDownloader.getDownloadStatus(downloadId);
+
+        // If not found, check direct downloads
+        if (!item) {
+          item = directDownloader.getDownloadStatus(downloadId);
+        }
+
         return { success: true, data: item };
       } catch (error) {
         return {
@@ -211,8 +245,17 @@ export function initializeDownloadIpc(): void {
     DownloadIpcChannels.GET_ALL_DOWNLOADS,
     async (): Promise<ApiResponse<DownloadItem[]>> => {
       try {
-        const items = videoDownloader.getAllDownloads();
-        return { success: true, data: items };
+        const videoItems = videoDownloader.getAllDownloads();
+        const directItems = directDownloader.getAllDownloads();
+
+        // Combine all items and sort by creation date (descending)
+        const allItems = [...videoItems, ...directItems].sort((a, b) => {
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        });
+
+        return { success: true, data: allItems };
       } catch (error) {
         return {
           success: false,
@@ -229,8 +272,9 @@ export function initializeDownloadIpc(): void {
     DownloadIpcChannels.CLEAR_COMPLETED,
     async (): Promise<ApiResponse<number>> => {
       try {
-        const count = videoDownloader.clearCompleted();
-        return { success: true, data: count };
+        const videoCount = videoDownloader.clearCompleted();
+        const directCount = await directDownloader.clearCompleted();
+        return { success: true, data: videoCount + directCount };
       } catch (error) {
         return {
           success: false,
@@ -345,7 +389,14 @@ export function initializeDownloadIpc(): void {
     "download:get-sub-path",
     async (
       _,
-      type: "videos" | "audios" | "playlists"
+      type:
+        | "videos"
+        | "audios"
+        | "playlists"
+        | "others"
+        | "programs"
+        | "compressed"
+        | "documents"
     ): Promise<ApiResponse<string>> => {
       try {
         const path = getDownloadSubPath(type);
@@ -360,10 +411,127 @@ export function initializeDownloadIpc(): void {
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // DIRECT DOWNLOAD HANDLERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Detect link type (direct download vs video)
+   */
+  ipcMain.handle(
+    DownloadIpcChannels.DETECT_LINK_TYPE,
+    async (
+      _,
+      payload: { url: string; mode?: DetectionMode } | string
+    ): Promise<ApiResponse<LinkTypeResult>> => {
+      try {
+        const url = typeof payload === "string" ? payload : payload.url;
+        const mode = typeof payload === "string" ? "auto" : payload.mode;
+        const result = await detectLinkType(url, mode);
+        return { success: true, data: result };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    }
+  );
+
+  /**
+   * Start a direct download (using aria2)
+   */
+  ipcMain.handle(
+    DownloadIpcChannels.START_DIRECT_DOWNLOAD,
+    async (_, options: DownloadOptions): Promise<ApiResponse<DownloadItem>> => {
+      try {
+        const result = await directDownloader.startDownload(options);
+        return result;
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    }
+  );
+
+  /**
+   * Pause a direct download
+   */
+  ipcMain.handle(
+    "download:pause-direct",
+    async (_, downloadId: string): Promise<ApiResponse<boolean>> => {
+      try {
+        const success = await directDownloader.pauseDownload(downloadId);
+        return { success, data: success };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    }
+  );
+
+  /**
+   * Resume a direct download
+   */
+  ipcMain.handle(
+    "download:resume-direct",
+    async (_, downloadId: string): Promise<ApiResponse<boolean>> => {
+      try {
+        const success = await directDownloader.resumeDownload(downloadId);
+        return { success, data: success };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    }
+  );
+
+  /**
+   * Cancel a direct download
+   */
+  ipcMain.handle(
+    "download:cancel-direct",
+    async (_, downloadId: string): Promise<ApiResponse<boolean>> => {
+      try {
+        const success = await directDownloader.cancelDownload(downloadId);
+        return { success, data: success };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    }
+  );
+
+  /**
+   * Get all direct downloads
+   */
+  ipcMain.handle(
+    "download:get-all-direct",
+    async (): Promise<ApiResponse<DownloadItem[]>> => {
+      try {
+        const items = directDownloader.getAllDownloads();
+        return { success: true, data: items };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // EVENT FORWARDING
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Forward download events to renderer
+  // Forward video download events to renderer
   videoDownloader.on("progress", (progress: DownloadProgress) => {
     sendToRenderer(DownloadIpcChannels.DOWNLOAD_PROGRESS, progress);
   });
@@ -378,6 +546,31 @@ export function initializeDownloadIpc(): void {
 
   videoDownloader.on("status-changed", (item: DownloadItem) => {
     sendToRenderer(DownloadIpcChannels.DOWNLOAD_STATUS_CHANGED, item);
+  });
+
+  videoDownloader.on("item-removed", (downloadId: string) => {
+    sendToRenderer(DownloadIpcChannels.DOWNLOAD_REMOVED, downloadId);
+  });
+
+  // Forward direct download events to renderer
+  directDownloader.on("progress", (progress: DownloadProgress) => {
+    sendToRenderer(DownloadIpcChannels.DOWNLOAD_PROGRESS, progress);
+  });
+
+  directDownloader.on("complete", (item: DownloadItem) => {
+    sendToRenderer(DownloadIpcChannels.DOWNLOAD_COMPLETE, item);
+  });
+
+  directDownloader.on("error", (item: DownloadItem, error: string) => {
+    sendToRenderer(DownloadIpcChannels.DOWNLOAD_ERROR, { item, error });
+  });
+
+  directDownloader.on("status-changed", (item: DownloadItem) => {
+    sendToRenderer(DownloadIpcChannels.DOWNLOAD_STATUS_CHANGED, item);
+  });
+
+  directDownloader.on("item-removed", (downloadId: string) => {
+    sendToRenderer(DownloadIpcChannels.DOWNLOAD_REMOVED, downloadId);
   });
 
   console.log("Download IPC handlers initialized");

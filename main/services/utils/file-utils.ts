@@ -19,10 +19,19 @@ export function getDefaultDownloadPath(): string {
  * Get a subdirectory in downloads for specific content types
  */
 export function getDownloadSubPath(
-  subDir: "videos" | "audios" | "playlists"
+  subDir:
+    | "videos"
+    | "audios"
+    | "playlists"
+    | "others"
+    | "programs"
+    | "compressed"
+    | "documents"
 ): string {
   const basePath = getDefaultDownloadPath();
-  const subPath = path.join(basePath, "IDM-Clone", subDir);
+  // Capitalize the first letter of the subDir
+  const capitalizedDir = subDir.charAt(0).toUpperCase() + subDir.slice(1);
+  const subPath = path.join(basePath, "IDM-Clone", capitalizedDir);
 
   // Ensure directory exists
   if (!fs.existsSync(subPath)) {
@@ -30,6 +39,89 @@ export function getDownloadSubPath(
   }
 
   return subPath;
+}
+
+/**
+ * Categorize a file by its extension
+ */
+export function getCategoryByExtension(
+  filename: string
+): "videos" | "audios" | "programs" | "compressed" | "documents" | "others" {
+  const ext = path.extname(filename).toLowerCase();
+
+  const categories: Record<string, string[]> = {
+    programs: [
+      ".exe",
+      ".msi",
+      ".apk",
+      ".dmg",
+      ".pkg",
+      ".appimage",
+      ".deb",
+      ".rpm",
+      ".vspackage",
+      ".vsix",
+    ],
+    audios: [
+      ".mp3",
+      ".wav",
+      ".m4a",
+      ".flac",
+      ".aac",
+      ".ogg",
+      ".wma",
+      ".mka",
+      ".opus",
+    ],
+    videos: [
+      ".mp4",
+      ".mkv",
+      ".avi",
+      ".mov",
+      ".wmv",
+      ".flv",
+      ".webm",
+      ".3gp",
+      ".m4v",
+      ".mpg",
+      ".mpeg",
+    ],
+    compressed: [
+      ".zip",
+      ".rar",
+      ".7z",
+      ".tar",
+      ".gz",
+      ".bz2",
+      ".xz",
+      ".tgz",
+      ".iso",
+      ".img",
+    ],
+    documents: [
+      ".pdf",
+      ".doc",
+      ".docx",
+      ".xls",
+      ".xlsx",
+      ".ppt",
+      ".pptx",
+      ".txt",
+      ".rtf",
+      ".odt",
+      ".ods",
+      ".odp",
+      ".csv",
+    ],
+  };
+
+  for (const [category, extensions] of Object.entries(categories)) {
+    if (extensions.includes(ext)) {
+      return category as any;
+    }
+  }
+
+  return "others";
 }
 
 export function slugifyFilename(text: string): string {
@@ -280,16 +372,47 @@ export function isPathWritable(dirPath: string): boolean {
 }
 
 /**
- * Get free disk space in bytes (simplified check)
+ * Get free disk space in bytes
+ * Works on Linux, macOS, and Windows (Node.js 18.11.0+)
  */
 export async function getFreeDiskSpace(
   dirPath: string
 ): Promise<number | null> {
   try {
-    // This is a simplified check - for accurate results, use a platform-specific library
-    const stats = fs.statfsSync(dirPath);
-    return stats.bfree * stats.bsize;
-  } catch {
+    // Ensure directory exists
+    if (!fs.existsSync(dirPath)) {
+      // Try parent directory
+      const parentDir = path.dirname(dirPath);
+      if (!fs.existsSync(parentDir)) {
+        return null;
+      }
+      dirPath = parentDir;
+    }
+
+    // Use statfsSync if available (Node.js 18.11.0+)
+    // This works on Linux, macOS, and Windows
+    if (
+      typeof (
+        fs as unknown as {
+          statfsSync?: (path: string) => { bfree: number; bsize: number };
+        }
+      ).statfsSync === "function"
+    ) {
+      const stats = (
+        fs as unknown as {
+          statfsSync: (path: string) => { bfree: number; bsize: number };
+        }
+      ).statfsSync(dirPath);
+      return stats.bfree * stats.bsize;
+    }
+
+    // Fallback: return null if statfsSync is not available
+    // The download will proceed without disk space check
+    return null;
+  } catch (error) {
+    // If check fails, return null to allow download to proceed
+    // This prevents blocking downloads on systems where disk space check is not available
+    console.warn("[FileUtils] Failed to check disk space:", error);
     return null;
   }
 }
@@ -343,4 +466,124 @@ export function parseBytes(sizeStr: string): number {
   };
 
   return value * (multipliers[unit] || 1);
+}
+
+/**
+ * Rename file to a temporary name for later deletion
+ * This helps unlock files on Windows by breaking the file handle
+ */
+export function renameFileForDeletion(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) return null;
+
+  try {
+    const dir = path.dirname(filePath);
+    const ext = path.extname(filePath);
+    const baseName = path.basename(filePath, ext);
+    const tempName = `.${baseName}.deleting.${Date.now()}${ext}`;
+    const tempPath = path.join(dir, tempName);
+
+    fs.renameSync(filePath, tempPath);
+    return tempPath;
+  } catch (error: any) {
+    console.warn(
+      `[FileUtils] Failed to rename file for deletion: ${filePath} - ${error.message}`
+    );
+    return null;
+  }
+}
+
+/**
+ * Schedule file deletion in background after delay
+ */
+export function scheduleFileDeletion(
+  filePath: string,
+  delayMs: number = 10000
+): void {
+  setTimeout(async () => {
+    try {
+      if (fs.existsSync(filePath)) {
+        await deleteFileWithRetry(filePath, 10, 2000);
+      }
+    } catch (error) {
+      console.warn(
+        `[FileUtils] Scheduled deletion failed for: ${filePath}`,
+        error
+      );
+    }
+  }, delayMs);
+}
+
+/**
+ * Delete a file with retry mechanism (handles EBUSY/EPERM)
+ * On Windows, uses rename-then-delete strategy for locked files
+ */
+export async function deleteFileWithRetry(
+  filePath: string,
+  maxRetries: number = 5,
+  retryDelay: number = 1000
+): Promise<boolean> {
+  if (!fs.existsSync(filePath)) return true;
+
+  const isWindows = process.platform === "win32";
+
+  // On Windows, try rename first to break file handle locks
+  if (isWindows) {
+    const renamedPath = renameFileForDeletion(filePath);
+    if (renamedPath) {
+      // Try to delete the renamed file immediately
+      try {
+        fs.unlinkSync(renamedPath);
+        return true;
+      } catch (error: any) {
+        // If immediate delete fails, schedule it for later
+        console.log(
+          `[FileUtils] File renamed but still locked, scheduling deletion: ${renamedPath}`
+        );
+        scheduleFileDeletion(renamedPath, 10000);
+        // Continue with retry attempts on original path as fallback
+      }
+    }
+  }
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      // Normal delete attempt
+      fs.unlinkSync(filePath);
+      return true;
+    } catch (error: any) {
+      const isLockError =
+        error.code === "EBUSY" ||
+        error.code === "EPERM" ||
+        error.code === "EACCES" ||
+        (isWindows && error.code === "ENOENT"); // Sometimes Windows returns ENOENT for locked files
+
+      if (isLockError && i < maxRetries - 1) {
+        // Wait before retrying with exponential backoff
+        const delay = retryDelay * (i + 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        // Last attempt or non-lock error
+        if (i === maxRetries - 1) {
+          console.warn(
+            `[FileUtils] Failed to delete file after ${maxRetries} attempts: ${filePath} (${
+              error.code || error.message
+            })`
+          );
+          // On Windows, try rename and schedule for later deletion
+          if (isWindows) {
+            const renamedPath = renameFileForDeletion(filePath);
+            if (renamedPath) {
+              console.log(
+                `[FileUtils] File renamed for scheduled deletion: ${renamedPath}`
+              );
+              scheduleFileDeletion(renamedPath, 15000);
+              return true; // Consider it "deleted" since it's renamed and scheduled
+            }
+          }
+        }
+        return false;
+      }
+    }
+  }
+  return false;
 }

@@ -35,6 +35,8 @@ export const MultiLinksQueue = ({
               key={item.id}
               url={item.url}
               title={item.title}
+              size={item.size}
+              type={item.type}
               status={item.status}
               error={item.error}
               onRemove={() => onRemoveItem(idx)}

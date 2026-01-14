@@ -4,6 +4,11 @@ import {
   Play,
   X,
   FileVideo,
+  Music,
+  Archive,
+  Package,
+  FileText,
+  File,
   AlertCircle,
   CheckCircle2,
   Clock,
@@ -83,6 +88,76 @@ const getStatusIcon = (status: DownloadStatus) => {
   }
 };
 
+const getFileIcon = (filename: string | null) => {
+  if (!filename) return <File size={24} />;
+
+  const ext = filename.split(".").pop()?.toLowerCase();
+
+  const categories = {
+    programs: [
+      "exe",
+      "msi",
+      "apk",
+      "dmg",
+      "pkg",
+      "appimage",
+      "deb",
+      "rpm",
+      "vspackage",
+      "vsix",
+    ],
+    audios: ["mp3", "wav", "m4a", "flac", "aac", "ogg", "wma", "mka", "opus"],
+    videos: [
+      "mp4",
+      "mkv",
+      "avi",
+      "mov",
+      "wmv",
+      "flv",
+      "webm",
+      "3gp",
+      "m4v",
+      "mpg",
+      "mpeg",
+    ],
+    compressed: [
+      "zip",
+      "rar",
+      "7z",
+      "tar",
+      "gz",
+      "bz2",
+      "xz",
+      "tgz",
+      "iso",
+      "img",
+    ],
+    documents: [
+      "pdf",
+      "doc",
+      "docx",
+      "xls",
+      "xlsx",
+      "ppt",
+      "pptx",
+      "txt",
+      "rtf",
+      "odt",
+      "ods",
+      "odp",
+      "csv",
+    ],
+  };
+
+  if (categories.programs.includes(ext!)) return <Package size={24} />;
+  if (categories.audios.includes(ext!)) return <Music size={24} />;
+  if (categories.videos.includes(ext!)) return <FileVideo size={24} />;
+  if (categories.compressed.includes(ext!)) return <Archive size={24} />;
+  if (categories.documents.includes(ext!)) return <FileText size={24} />;
+
+  return <File size={24} />;
+};
+
 export const DownloadCard = ({
   item,
   onPause,
@@ -139,8 +214,19 @@ export const DownloadCard = ({
                 }}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-primary">
-                <FileVideo size={24} />
+              <div
+                className={`w-full h-full flex items-center justify-center text-primary ${
+                  item.status === DownloadStatus.COMPLETED
+                    ? "cursor-pointer hover:bg-default-200 transition-colors"
+                    : "cursor-default"
+                }`}
+                onClick={() =>
+                  item.status === DownloadStatus.COMPLETED &&
+                  fullPath &&
+                  onOpenFile(fullPath)
+                }
+              >
+                {getFileIcon(item.filename)}
               </div>
             )}
           </div>

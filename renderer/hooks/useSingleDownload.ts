@@ -1,5 +1,12 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { useVideoInfo, startDownload, DownloadQuality } from "./useDownload";
+import {
+  useVideoInfo,
+  startDownload,
+  DownloadQuality,
+  detectLinkType,
+  startDirectDownload,
+  useVideoActions,
+} from "./useDownload";
 import {
   detectPlatform,
   isPlaylistUrl,
@@ -49,8 +56,18 @@ export function useSingleDownload(): UseSingleDownloadReturn {
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
 
   // Video info hook
-  const { videoInfo, isLoading, error, extract, reset, setError } =
-    useVideoInfo();
+  const useVideoInfoResult = useVideoInfo();
+  const {
+    videoInfo,
+    isLoading,
+    error,
+    extract,
+    reset,
+    setError,
+    setIsLoading,
+  } = useVideoInfoResult;
+  const [isDirectDownload, setIsDirectDownload] = useState(false);
+  const { detectLinkType, startDirectDownload } = useVideoActions();
 
   // Computed values
   const platform = useMemo(() => {
@@ -135,13 +152,47 @@ export function useSingleDownload(): UseSingleDownloadReturn {
       return;
     }
 
-    // 3. Optional: Check for supported platforms (warning instead of error to stay flexible)
-    // const platformInfo = detectPlatform(trimmedUrl);
-    // if (!platformInfo) {
-    //   // We can still try to extract, but we warn the user
-    // }
+    // 3. Detect link type first (direct download vs video platform)
+    setIsLoading(true);
+    try {
+      const linkType = await detectLinkType(trimmedUrl);
 
+      if (linkType.success && linkType.data?.isDirect) {
+        setIsDirectDownload(true);
+        const data = linkType.data;
+
+        // Mock video info for the UI to display file information
+        const mockedInfo: any = {
+          id: "direct-" + Date.now(),
+          title:
+            data.filename || trimmedUrl.split("/").pop() || "Direct Download",
+          uploader: new URL(trimmedUrl).hostname,
+          thumbnail: null,
+          formats: [],
+          qualityOptions: [
+            {
+              key: "original",
+              label: "Direct File",
+              quality: "file",
+              resolution: "N/A",
+              totalSize: data.contentLength || null,
+            },
+          ],
+        };
+
+        // @ts-ignore - internal setter
+        useVideoInfoResult.setVideoInfo(mockedInfo);
+        setSelectedQuality("original");
+        setIsLoading(false);
+        return;
+      }
+    } catch (err) {
+      console.warn("[SingleDownload] Link type detection failed:", err);
+    }
+
+    setIsDirectDownload(false);
     const result = await extract(trimmedUrl);
+    setIsLoading(false);
 
     // 4. Check if the extracted info resulted in a playlist (sometimes detection fails but yt-dlp finds a list)
     if (result.success && result.data?.isPlaylist) {
@@ -151,7 +202,7 @@ export function useSingleDownload(): UseSingleDownloadReturn {
         `This link was detected as a ${platformName} playlist. Please use the 'Playlist/Channel' page for bulk downloads.`
       );
     }
-  }, [url, extract, reset, setError]);
+  }, [url, extract, reset, setError, detectLinkType]);
 
   // Handle key press (Enter to fetch)
   const handleKeyPress = useCallback(
@@ -165,7 +216,10 @@ export function useSingleDownload(): UseSingleDownloadReturn {
 
   // Handle download
   const handleDownload = useCallback(async () => {
-    if (!url.trim() || !selectedQuality) return;
+    if (!url.trim()) return;
+
+    // For video downloads, quality must be selected
+    if (!isDirectDownload && !selectedQuality) return;
 
     setIsDownloading(true);
     setDownloadStatus("Starting download...");
@@ -173,13 +227,24 @@ export function useSingleDownload(): UseSingleDownloadReturn {
     try {
       const isAudioOnly = selectedQuality === DownloadQuality.AUDIO_ONLY;
 
-      const result = await startDownload(videoInfo, {
-        url: url.trim(),
-        outputPath: "", // Will use default
-        quality: selectedQuality,
-        format: isAudioOnly ? selectedFormat : selectedFormat,
-        audioOnly: isAudioOnly,
-      });
+      let result;
+      if (isDirectDownload) {
+        // Use direct downloader for files
+        result = await startDirectDownload({
+          url: url.trim(),
+          outputPath: "", // Will use default
+          filename: videoInfo?.title || undefined, // Use title we extracted or mocked
+        });
+      } else {
+        // Use video downloader for media platforms
+        result = await startDownload(videoInfo, {
+          url: url.trim(),
+          outputPath: "", // Will use default
+          quality: selectedQuality,
+          format: isAudioOnly ? selectedFormat : selectedFormat,
+          audioOnly: isAudioOnly,
+        });
+      }
 
       if (result.success) {
         setDownloadStatus(
@@ -195,7 +260,7 @@ export function useSingleDownload(): UseSingleDownloadReturn {
     } finally {
       setIsDownloading(false);
     }
-  }, [url, videoInfo, selectedQuality, selectedFormat]);
+  }, [url, videoInfo, selectedQuality, selectedFormat, isDirectDownload]);
 
   // Handle clear
   const handleClear = useCallback(() => {
