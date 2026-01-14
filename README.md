@@ -1,5 +1,7 @@
 # 🃏 JokerDL - The Ultimate Media Downloader
 
+> **Professional High-Speed Media Downloader** built with Electron, Next.js, yt-dlp and aria2.
+
 <p align="center">
   <img src="https://img.shields.io/badge/Electron-34.0.0-blue?style=for-the-badge&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/Next.js-14.2.4-black?style=for-the-badge&logo=next.js" alt="Next.js">
@@ -16,12 +18,12 @@
 - 🚀 **Universal Support**: Download from YouTube, TikTok, Instagram, Twitter(X), Facebook, Vimeo, Twitch, Dailymotion, and 1000+ other sites.
 - 📊 **Real-time Progress**: Track download speed, ETA, and progress percentage with a smooth, live-updating UI.
 - 🎞️ **Quality Selection**: Choose your preferred quality from 360p up to 4K (if available).
-- 🎵 **Audio Extraction**: Download high-quality audio directly in MP3, M4A, OPUS, or FLAC formats.
+- 🎵 **Audio Extraction**: Download high-quality audio directly in MP3, M4A, OPUS, or FLAC formats (auto-saved to `audios` folder).
 - 📝 **Info Extraction**: See title, duration, uploader, and thumbnails before you even start the download.
-- 🎬 **Playlist Support**: Download entire playlists from YouTube and Vimeo with a single click.
-- 🃏 **Smart Batching**: Add multiple links to the queue and download them sequentially or in parallel.
-- ⚡ **Concurrent Downloads**: Download up to 3 files simultaneously for faster completion.
-- 🎛️ **Download Management**: Pause, resume, or cancel downloads with full control over your queue.
+- 🎬 **Playlist/Channel**: Download entire playlists or channels from YouTube and Vimeo with a single click.
+- 🃏 **Multiple Links**: Add unlimited links to the queue and process them in bulk.
+- ⚡ **Concurrent Downloads**: Smart queue management for fast simultaneous downloads (up to 3 files).
+- 🎛️ **Download Management**: Pause, resume, retry, or cancel downloads with full control.
 - 📚 **Download History**: Keep track of all your past downloads with search and filter capabilities.
 - ⚙️ **Customizable Settings**: Configure download paths, concurrent download limits, and theme preferences.
 - 💎 **Premium UI**: Dark-mode-first aesthetic with Glassmorphism effects and smooth Framer Motion animations.
