@@ -1,5 +1,9 @@
 # 🌀 Remix DM - The Ultimate Media Downloader
 
+<p align="center">
+  <img src="renderer/public/images/logo.png" alt="Remix DM Logo" width="180">
+</p>
+
 > **Professional High-Speed Media Downloader** built with Electron, Next.js, yt-dlp and aria2.
 
 <p align="center">
