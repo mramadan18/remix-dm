@@ -9,4 +9,10 @@ files:
     filter:
       - package.json
       - app
-publish: null
+publish:
+  provider: github
+  owner: mramadan18
+  repo: remix-dm
+win:
+  target: nsis
+  icon: resources/icon.ico

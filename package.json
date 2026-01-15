@@ -1,9 +1,9 @@
 {
   "private": true,
-  "name": "my-nextron-app",
-  "description": "My application description",
+  "name": "remixdm",
+  "description": "A professional-grade desktop application for lightning-fast bulk media downloads, playlists, and high-quality video content from hundreds of sources.",
   "version": "1.0.0",
-  "author": "Yoshihide Shiono <shiono.yoshihide@gmail.com>",
+  "author": "mramadan18",
   "main": "app/background.js",
   "scripts": {
     "dev": "nextron",
