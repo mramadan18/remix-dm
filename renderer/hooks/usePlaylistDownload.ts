@@ -41,7 +41,7 @@ export const usePlaylistDownload = (): UsePlaylistDownloadReturn => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [selectedQuality, setSelectedQuality] = useState<string>(
-    DownloadQuality.QUALITY_1080P
+    DownloadQuality.QUALITY_1080P,
   );
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
 
@@ -55,7 +55,7 @@ export const usePlaylistDownload = (): UsePlaylistDownloadReturn => {
 
   const filteredItems = useMemo(() => {
     return playlistItems.filter((item) =>
-      item.title.toLowerCase().includes(searchQuery.toLowerCase())
+      item?.title?.toLowerCase()?.includes(searchQuery?.toLowerCase() || ""),
     );
   }, [playlistItems, searchQuery]);
 
@@ -92,7 +92,7 @@ export const usePlaylistDownload = (): UsePlaylistDownloadReturn => {
   const toggleSelectAll = () => {
     const filteredIds = filteredItems.map((i) => i.id);
     const areAllFilteredSelected = filteredIds.every((id) =>
-      selected.includes(id)
+      selected.includes(id),
     );
 
     if (areAllFilteredSelected) {
@@ -109,7 +109,7 @@ export const usePlaylistDownload = (): UsePlaylistDownloadReturn => {
     setIsBulkDownloading(true);
 
     const videosToDownload = playlistItems.filter((v) =>
-      selected.includes(v.id)
+      selected.includes(v.id),
     );
 
     // Get the base playlists directory

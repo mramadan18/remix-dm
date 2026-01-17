@@ -10,9 +10,9 @@
     "dev": "nextron",
     "build": "nextron build",
     "postinstall": "electron-builder install-app-deps",
-    "release:beta": "npm version prerelease --preid=beta && git push origin main --tags",
-    "release:patch": "npm version patch && git push origin main --tags",
-    "release:minor": "npm version minor && git push origin main --tags"
+    "release:beta": "npm version prerelease --preid=beta -m \"chore(release): %s\" && git push origin main --tags",
+    "release:patch": "npm version patch -m \"chore(release): %s\" && git push origin main --tags",
+    "release:minor": "npm version minor -m \"chore(release): %s\" && git push origin main --tags"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

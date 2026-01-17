@@ -7,7 +7,7 @@ import { EventEmitter } from "events";
 import { randomUUID } from "crypto";
 import * as path from "path";
 import * as fs from "fs";
-import { exec } from "child_process";
+import { exec, ChildProcess } from "child_process";
 import {
   getYtDlpWrap,
   ensureYtDlp,
@@ -46,8 +46,10 @@ import { settingsService } from "../../settings.service";
  * Download manager class for managing video downloads
  */
 export class VideoDownloadService extends EventEmitter {
-  private activeDownloads: Map<string, { process: any; item: DownloadItem }> =
-    new Map();
+  private activeDownloads: Map<
+    string,
+    { process: ChildProcess; item: DownloadItem }
+  > = new Map();
   private downloadQueue: DownloadItem[] = [];
   private maxConcurrent: number = 3;
   // Track downloads that reached 100% or completed merge
@@ -69,13 +71,29 @@ export class VideoDownloadService extends EventEmitter {
       // Use execPromise with custom args instead of getVideoInfo()
       // The default getVideoInfo() uses "-f best" which is deprecated and causes warnings
       // We use "--dump-single-json" which fetches all formats without selecting one
-      const rawOutput = await ytDlp.execPromise([
+
+      // OPTIMIZATION: Limit playlist items for initial metadata fetch
+      // For large playlists (e.g., 500+ videos), fetching all metadata at once
+      // can cause huge JSON parsing delays. We limit to first 100 items.
+      const args = [
         url,
         "--dump-single-json",
         "--no-warnings",
         "--no-check-certificates",
         "--flat-playlist", // Don't download playlist items, just get metadata
-      ]);
+      ];
+
+      // Check if this might be a playlist and add item limit
+      // This helps with performance for large playlists
+      if (
+        url.includes("playlist") ||
+        url.includes("list=") ||
+        url.includes("channel")
+      ) {
+        args.push("--playlist-items", "1-50");
+      }
+
+      const rawOutput = await ytDlp.execPromise(args);
       const metadata = JSON.parse(rawOutput);
 
       // Map raw metadata to VideoInfo
@@ -110,6 +128,7 @@ export class VideoDownloadService extends EventEmitter {
           hasVideo: f.vcodec !== "none",
           hasAudio: f.acodec !== "none",
           tbr: f.tbr || null,
+          protocol: f.protocol || null, // Important for filtering HLS (m3u8_native)
         })),
         subtitles: this.mapSubtitles(metadata.subtitles),
         webpage_url: metadata.webpage_url,
@@ -122,7 +141,7 @@ export class VideoDownloadService extends EventEmitter {
       // Process and group available formats into clean quality options
       videoInfo.qualityOptions = this.processQualityOptions(
         videoInfo.formats,
-        videoInfo.duration
+        videoInfo.duration,
       );
 
       if (videoInfo.isPlaylist && metadata.entries) {
@@ -203,15 +222,35 @@ export class VideoDownloadService extends EventEmitter {
 
   /**
    * Process and group formats into clean quality options with accurate size estimation
+   * OPTIMIZATION: Filters out HLS formats (m3u8) which are:
+   * - Less stable than DASH
+   * - Often cause "empty file" errors
+   * - Numbers 91-96 on YouTube are typically HLS
    */
   private processQualityOptions(
     formats: VideoFormat[],
-    duration: number | null
+    duration: number | null,
   ): QualityOption[] {
-    // Separate streams
-    const videoOnly = formats.filter((f) => f.hasVideo && !f.hasAudio);
-    const audioOnly = formats.filter((f) => f.hasAudio && !f.hasVideo);
-    const combined = formats.filter((f) => f.hasVideo && f.hasAudio);
+    // Helper to check if format is HLS (unreliable format)
+    const isHLS = (f: VideoFormat) => {
+      return (
+        f.protocol === "m3u8_native" ||
+        f.protocol === "m3u8" ||
+        f.extension === "m3u8"
+      );
+    };
+
+    // Separate streams - AVOID HLS formats for YouTube
+    // HLS (HTTP Live Streaming) is less reliable than DASH
+    const videoOnly = formats.filter(
+      (f) => f.hasVideo && !f.hasAudio && !isHLS(f),
+    );
+    const audioOnly = formats.filter(
+      (f) => f.hasAudio && !f.hasVideo && !isHLS(f),
+    );
+    const combined = formats.filter(
+      (f) => f.hasVideo && f.hasAudio && !isHLS(f),
+    );
 
     // Find the best audio format as a baseline for DASH streams
     // Preference: opus (webm) > m4a > others. Then highest bitrate.
@@ -319,7 +358,7 @@ export class VideoDownloadService extends EventEmitter {
    */
   private calculateFormatSize(
     format: VideoFormat,
-    duration: number | null
+    duration: number | null,
   ): number | null {
     if (format.filesize) return format.filesize;
     if (format.filesizeApprox) return format.filesizeApprox;
@@ -374,7 +413,7 @@ export class VideoDownloadService extends EventEmitter {
   private buildArgs(
     options: DownloadOptions,
     outputFilePath: string,
-    videoInfo?: VideoInfo | null
+    videoInfo?: VideoInfo | null,
   ): string[] {
     const args: string[] = [
       "--no-warnings",
@@ -383,6 +422,16 @@ export class VideoDownloadService extends EventEmitter {
       // yt-dlp will still sanitize invalid filesystem characters automatically
       "-o",
       outputFilePath,
+
+      // YOUTUBE BOT DETECTION MITIGATION:
+      // YouTube has been aggressively blocking automated tools by sending empty/fake video files.
+      // These flags help bypass detection:
+      "--rm-cache-dir", // Clear cache to prevent using stale/blocked URLs
+      "--no-check-certificates", // Already included but essential for blocked regions
+      "--extractor-retries",
+      "3", // Retry extractor if YouTube blocks the request
+      "--fragment-retries",
+      "5", // Retry individual fragments if download fails
     ];
 
     const settings = settingsService.getSettings();
@@ -391,6 +440,12 @@ export class VideoDownloadService extends EventEmitter {
     } else if (settings.onFileExists === "overwrite") {
       args.push("--force-overwrites");
     }
+
+    // CRITICAL FIX FOR YOUTUBE EMPTY FILE ERROR:
+    // Use Android and Web player clients instead of desktop client
+    // YouTube's bot detection is more lenient with mobile clients
+    // This is THE most important fix for "downloaded file is empty" errors
+    args.push("--extractor-args", "youtube:player_client=android,web");
 
     // Add ffmpeg location if available - REQUIRED for post-processing (merging & audio extraction)
     const ffmpegLocation = getFfmpegPath();
@@ -416,12 +471,12 @@ export class VideoDownloadService extends EventEmitter {
           key: q.key,
           videoFormatId: q.videoFormat?.formatId,
           audioFormatId: q.audioFormat?.formatId,
-        }))
+        })),
       );
 
       if (videoInfo?.qualityOptions) {
         const qualityOption = videoInfo.qualityOptions.find(
-          (opt) => opt.key === options.quality
+          (opt) => opt.key === options.quality,
         );
 
         console.log(
@@ -432,7 +487,7 @@ export class VideoDownloadService extends EventEmitter {
                 videoFormatId: qualityOption.videoFormat?.formatId,
                 audioFormatId: qualityOption.audioFormat?.formatId,
               }
-            : null
+            : null,
         );
 
         if (qualityOption) {
@@ -441,20 +496,28 @@ export class VideoDownloadService extends EventEmitter {
             formatSelector = "bestaudio";
           } else if (qualityOption.videoFormat && qualityOption.audioFormat) {
             // DASH streams (YouTube, Vimeo, Facebook, etc.): video + audio separate
-            // Use format IDs with fallback to ensure format is available
+            // IMPORTANT: Use descriptive selectors, NOT just format IDs
+            // This ensures YouTube sends DASH (stable) instead of HLS (unreliable)
             const height = this.getHeightFromFormat(qualityOption.videoFormat);
             const videoId = qualityOption.videoFormat.formatId;
             const audioId = qualityOption.audioFormat.formatId;
 
-            // Build format selector with fallback chain:
-            // 1. Try exact format IDs first
-            // 2. Fallback to h264 codec at same height (most compatible)
-            // 3. Fallback to any codec at same height
-            // 4. Fallback to best available
+            // Build format selector with YouTube-friendly fallback chain:
+            // 1. Try bestvideo+bestaudio at target height (lets yt-dlp choose best DASH)
+            // 2. Fallback to h264/avc1 (most compatible, mp4 container)
+            // 3. Avoid specific IDs unless absolutely necessary (can trigger bot detection)
+            // 4. Use [protocol!=m3u8_native] to explicitly avoid HLS
             if (height) {
-              formatSelector = `${videoId}+${audioId}/bestvideo[vcodec^=avc1][height<=${height}]+bestaudio/bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`;
+              formatSelector =
+                `bestvideo[height<=${height}][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/` +
+                `bestvideo[vcodec^=avc1][height<=${height}]+bestaudio/` +
+                `bestvideo[height<=${height}]+bestaudio/` +
+                `best[height<=${height}]/best`;
             } else {
-              formatSelector = `${videoId}+${audioId}/bestvideo[vcodec^=avc1]+bestaudio/bestvideo+bestaudio/best`;
+              formatSelector =
+                `bestvideo[ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/` +
+                `bestvideo[vcodec^=avc1]+bestaudio/` +
+                `bestvideo+bestaudio/best`;
             }
 
             console.log("[buildArgs] Using DASH streams with fallback");
@@ -477,23 +540,23 @@ export class VideoDownloadService extends EventEmitter {
       console.log("[buildArgs] Final formatSelector:", formatSelector);
 
       // Fallback to qualityMap if formatSelector not found
-      // All selectors prefer h264 (avc1) codec for maximum compatibility
+      // All selectors avoid HLS (m3u8_native) and prefer DASH with MP4 containers
       if (!formatSelector) {
         const qualityMap: Record<string, string> = {
           [DownloadQuality.BEST_VIDEO]:
-            "bestvideo[vcodec^=avc1]+bestaudio/bestvideo+bestaudio/best",
+            "bestvideo[ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1]+bestaudio/bestvideo+bestaudio/best",
           [DownloadQuality.QUALITY_4K]:
-            "bestvideo[vcodec^=avc1][height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+            "bestvideo[height<=2160][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height<=2160]",
           [DownloadQuality.QUALITY_1440P]:
-            "bestvideo[vcodec^=avc1][height<=1440]+bestaudio/bestvideo[height<=1440]+bestaudio/best[height<=1440]",
+            "bestvideo[height<=1440][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=1440]+bestaudio/bestvideo[height<=1440]+bestaudio/best[height<=1440]",
           [DownloadQuality.QUALITY_1080P]:
-            "bestvideo[vcodec^=avc1][height<=1080]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+            "bestvideo[height<=1080][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=1080]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
           [DownloadQuality.QUALITY_720P]:
-            "bestvideo[vcodec^=avc1][height<=720]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]",
+            "bestvideo[height<=720][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=720]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]",
           [DownloadQuality.QUALITY_480P]:
-            "bestvideo[vcodec^=avc1][height<=480]+bestaudio/bestvideo[height<=480]+bestaudio/best[height<=480]",
+            "bestvideo[height<=480][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=480]+bestaudio/bestvideo[height<=480]+bestaudio/best[height<=480]",
           [DownloadQuality.QUALITY_360P]:
-            "bestvideo[vcodec^=avc1][height<=360]+bestaudio/bestvideo[height<=360]+bestaudio/best[height<=360]",
+            "bestvideo[height<=360][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=360]+bestaudio/bestvideo[height<=360]+bestaudio/best[height<=360]",
           [DownloadQuality.AUDIO_ONLY]: "bestaudio",
         };
         formatSelector = qualityMap[options.quality] || options.quality;
@@ -513,13 +576,13 @@ export class VideoDownloadService extends EventEmitter {
         } else {
           args.push(
             "-f",
-            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
           );
         }
       } else {
         args.push(
           "-f",
-          "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+          "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         );
       }
     }
@@ -584,9 +647,27 @@ export class VideoDownloadService extends EventEmitter {
       args.push("--proxy", options.proxy);
     }
 
+    // User-Agent: Mimic real browser to avoid bot detection
+    // YouTube is very aggressive about blocking automated tools
+    // Using a recent Chrome user agent helps bypass detection
+    args.push(
+      "--user-agent",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    );
+
     // Cookies
     if (options.cookies) {
       args.push("--cookies", options.cookies);
+    }
+
+    // DEBUGGING: Enable verbose mode to diagnose empty file errors
+    // This helps identify whether the error is from fetching, writing, or merging
+    // Verbose output will be captured in stderr and logged to console
+    if (options.verbose) {
+      args.push("--verbose");
+      console.log(
+        "[VideoDownload] Verbose mode enabled - check console for detailed yt-dlp output",
+      );
     }
 
     // Add the URL last
@@ -600,14 +681,14 @@ export class VideoDownloadService extends EventEmitter {
    */
   private getInitialTotalBytes(
     videoInfo: VideoInfo | null,
-    quality: string | undefined
+    quality: string | undefined,
   ): number | null {
     if (!videoInfo) return null;
 
     // Try to get totalSize from the selected qualityOption
     if (quality) {
       const qualityOption = videoInfo.qualityOptions?.find(
-        (opt) => opt.key === quality
+        (opt) => opt.key === quality,
       );
       if (qualityOption?.totalSize) {
         return qualityOption.totalSize;
@@ -618,7 +699,7 @@ export class VideoDownloadService extends EventEmitter {
     if (videoInfo.qualityOptions && videoInfo.qualityOptions.length > 0) {
       const firstQualityOption =
         videoInfo.qualityOptions.find(
-          (opt) => opt.totalSize && opt.key !== "bestaudio"
+          (opt) => opt.totalSize && opt.key !== "bestaudio",
         ) || videoInfo.qualityOptions[0];
 
       if (firstQualityOption?.totalSize) {
@@ -633,7 +714,7 @@ export class VideoDownloadService extends EventEmitter {
 
     const videoFormats = videoInfo.formats.filter((f) => f.hasVideo);
     const audioFormats = videoInfo.formats.filter(
-      (f) => f.hasAudio && !f.hasVideo
+      (f) => f.hasAudio && !f.hasVideo,
     );
 
     let maxVideoSize = 0;
@@ -660,7 +741,7 @@ export class VideoDownloadService extends EventEmitter {
 
     // Last resort: get file size from the first format that has it
     const formatWithSize = videoInfo.formats.find(
-      (f) => f.filesize || f.filesizeApprox
+      (f) => f.filesize || f.filesizeApprox,
     );
 
     return formatWithSize
@@ -673,7 +754,7 @@ export class VideoDownloadService extends EventEmitter {
    */
   async startDownload(
     videoInfo: VideoInfo | null,
-    options: DownloadOptions
+    options: DownloadOptions,
   ): Promise<ApiResponse<DownloadItem>> {
     // Ensure yt-dlp is available
     if (!isBinaryAvailable()) {
@@ -712,7 +793,7 @@ export class VideoDownloadService extends EventEmitter {
     // Get initial file size
     const initialTotalBytes = this.getInitialTotalBytes(
       videoInfo,
-      options.quality
+      options.quality,
     );
 
     // Create download item
@@ -765,7 +846,7 @@ export class VideoDownloadService extends EventEmitter {
 
     // Get pending downloads
     const pendingDownloads = this.downloadQueue.filter(
-      (d) => d.status === DownloadStatus.PENDING
+      (d) => d.status === DownloadStatus.PENDING,
     );
 
     // Start downloads up to available slots
@@ -794,7 +875,7 @@ export class VideoDownloadService extends EventEmitter {
 
     const outputFilePath = path.join(
       item.outputPath,
-      item.filename || "%(title)s.%(ext)s"
+      item.filename || "%(title)s.%(ext)s",
     );
 
     const args = this.buildArgs(item.options, outputFilePath, item.videoInfo);
@@ -848,6 +929,13 @@ export class VideoDownloadService extends EventEmitter {
           }
         }
 
+        // OPTIMIZATION: Progress Calculation Strategy
+        // yt-dlp sometimes sends `downloaded_bytes` directly in raw output,
+        // but yt-dlp-wrap may not expose it reliably across all platforms/versions.
+        // We use percentage-based calculation as a safe, consistent fallback that:
+        // 1. Prevents UI jumps from inconsistent reporting
+        // 2. Works reliably across all yt-dlp versions
+        // 3. Provides smooth, gradual progress updates
         // Calculate downloaded bytes from percentage and total bytes
         // This ensures downloadedBytes is always updated when we have the necessary data
         // Use totalBytes from progress event, or fall back to initialTotalBytes from videoInfo
@@ -860,7 +948,7 @@ export class VideoDownloadService extends EventEmitter {
           progress.percent !== null
         ) {
           const calculatedBytes = Math.round(
-            (progress.percent / 100) * totalBytesToUse
+            (progress.percent / 100) * totalBytesToUse,
           );
 
           // Only update if calculated value is greater than current
@@ -934,7 +1022,7 @@ export class VideoDownloadService extends EventEmitter {
           // 2. Already Downloaded
           else if (eventData.includes("has already been downloaded")) {
             const match = eventData.match(
-              /\[download\]\s+(.+)\s+has already been downloaded/
+              /\[download\]\s+(.+)\s+has already been downloaded/,
             );
             if (match) {
               item.progress.filename = path.basename(match[1]);
@@ -986,7 +1074,7 @@ export class VideoDownloadService extends EventEmitter {
 
             if (!exists || isIntermediate || currentFilename?.includes("%")) {
               console.log(
-                `[VideoDownload] Verifying final filename for ${item.id}...`
+                `[VideoDownload] Verifying final filename for ${item.id}...`,
               );
 
               if (fs.existsSync(outputDir)) {
@@ -1000,7 +1088,7 @@ export class VideoDownloadService extends EventEmitter {
                   // Try to strip known intermediate suffixes
                   basePattern = currentFilename.replace(
                     /\.(f\d+|temp|part|ytdl).*$/,
-                    ""
+                    "",
                   );
                 }
 
@@ -1012,7 +1100,7 @@ export class VideoDownloadService extends EventEmitter {
                     .filter(
                       (f) =>
                         f.startsWith(basePattern) &&
-                        !/\.(part|ytdl|f\d+)$/.test(f)
+                        !/\.(part|ytdl|f\d+)$/.test(f),
                     )
                     .map((f) => ({
                       name: f,
@@ -1020,13 +1108,13 @@ export class VideoDownloadService extends EventEmitter {
                     }))
                     .sort(
                       (a, b) =>
-                        b.stats.mtime.getTime() - a.stats.mtime.getTime()
+                        b.stats.mtime.getTime() - a.stats.mtime.getTime(),
                     );
 
                   if (matchingFiles.length > 0) {
                     const bestMatch = matchingFiles[0].name;
                     console.log(
-                      `[VideoDownload] Resolved final filename: ${bestMatch}`
+                      `[VideoDownload] Resolved final filename: ${bestMatch}`,
                     );
                     item.filename = bestMatch;
                     item.progress.filename = bestMatch;
@@ -1052,7 +1140,7 @@ export class VideoDownloadService extends EventEmitter {
                     .filter((f) => f !== null)
                     .sort(
                       (a, b) =>
-                        b!.stats.mtime.getTime() - a!.stats.mtime.getTime()
+                        b!.stats.mtime.getTime() - a!.stats.mtime.getTime(),
                     );
 
                   if (recentFiles.length > 0 && recentFiles[0]) {
@@ -1088,7 +1176,7 @@ export class VideoDownloadService extends EventEmitter {
           } catch (error) {
             console.warn(
               "[VideoDownload] Exception during completion details gathering:",
-              error
+              error,
             );
           }
 
@@ -1120,7 +1208,7 @@ export class VideoDownloadService extends EventEmitter {
                   (line) =>
                     line.includes("ERROR:") ||
                     line.includes("Cannot parse") ||
-                    line.includes("Unsupported URL")
+                    line.includes("Unsupported URL"),
                 );
               if (errorLines.length > 0) {
                 errorMessage = errorLines[0].replace(/ERROR:\s*/i, "").trim();
@@ -1136,6 +1224,16 @@ export class VideoDownloadService extends EventEmitter {
               errorMessage = `This URL is not supported. Please check the URL and try again.\n\nOriginal error: ${errorMessage}`;
             } else if (errorMessage.includes("Video unavailable")) {
               errorMessage = "This video is unavailable or has been removed.";
+            } else if (errorMessage.includes("The downloaded file is empty")) {
+              errorMessage =
+                "⚠️ The downloaded file is empty. YouTube bot detection likely blocked this download.\n\n" +
+                "🛠️ Troubleshooting steps:\n" +
+                "1. UPDATE yt-dlp: Go to Settings > Engines > Update yt-dlp (Most common fix)\n" +
+                "2. USE COOKIES: Export cookies from your browser and add them in download settings\n" +
+                "3. CHECK PERMISSIONS: Ensure the download folder has write permissions\n" +
+                "4. CLEAR CACHE: The app now clears cache automatically, but you can try restarting\n" +
+                "5. ENABLE DEBUG: Set verbose mode to see detailed error logs\n\n" +
+                "💡 This error is usually caused by YouTube's aggressive bot detection.";
             }
           }
 
@@ -1168,7 +1266,39 @@ export class VideoDownloadService extends EventEmitter {
           if (errorMatch) {
             errorMessage = errorMatch[1].trim();
           } else {
-            errorMessage = lastError.trim();
+            // Try to find the main error line
+            const errorLines = lastError
+              .split("\n")
+              .filter(
+                (line) =>
+                  line.includes("ERROR:") ||
+                  line.includes("Cannot parse") ||
+                  line.includes("Unsupported URL"),
+              );
+            if (errorLines.length > 0) {
+              errorMessage = errorLines[0].replace(/ERROR:\s*/i, "").trim();
+            } else {
+              errorMessage = lastError.trim();
+            }
+          }
+
+          // Provide helpful suggestions for common errors
+          if (errorMessage.includes("Cannot parse data")) {
+            errorMessage = `Unable to parse video data from this source. This may be due to:\n- An outdated yt-dlp version (try updating)\n- Changes in the website structure\n- The video may be private or restricted\n\nOriginal error: ${errorMessage}`;
+          } else if (errorMessage.includes("Unsupported URL")) {
+            errorMessage = `This URL is not supported. Please check the URL and try again.\n\nOriginal error: ${errorMessage}`;
+          } else if (errorMessage.includes("Video unavailable")) {
+            errorMessage = "This video is unavailable or has been removed.";
+          } else if (errorMessage.includes("The downloaded file is empty")) {
+            errorMessage =
+              "⚠️ The downloaded file is empty. YouTube bot detection likely blocked this download.\n\n" +
+              "🛠️ Troubleshooting steps:\n" +
+              "1. UPDATE yt-dlp: Go to Settings > Engines > Update yt-dlp (Most common fix)\n" +
+              "2. USE COOKIES: Export cookies from your browser and add them in download settings\n" +
+              "3. CHECK PERMISSIONS: Ensure the download folder has write permissions\n" +
+              "4. CLEAR CACHE: The app now clears cache automatically, but you can try restarting\n" +
+              "5. ENABLE DEBUG: Set verbose mode to see detailed error logs\n\n" +
+              "💡 This error is usually caused by YouTube's aggressive bot detection.";
           }
         }
 
@@ -1218,7 +1348,7 @@ export class VideoDownloadService extends EventEmitter {
   /**
    * Helper to kill process and its children robustly
    */
-  private killProcess(process: any, downloadId: string): void {
+  private killProcess(process: ChildProcess, downloadId: string): void {
     if (!process) return;
 
     const pid = process.pid;
@@ -1235,7 +1365,7 @@ export class VideoDownloadService extends EventEmitter {
         if (err) {
           console.warn(
             `[VideoDownload] taskkill failed for PID ${pid}, falling back to process.kill:`,
-            err
+            err,
           );
           try {
             process.kill("SIGTERM");
@@ -1256,6 +1386,12 @@ export class VideoDownloadService extends EventEmitter {
 
   /**
    * Cleanup any files (partial or complete) associated with a download
+   * OPTIMIZATION: Handles Windows file lock race conditions by:
+   * 1. Using aggressive retry strategies with delays
+   * 2. Renaming files first to break locks (Windows-specific)
+   * 3. Scheduling delayed deletions if immediate deletion fails
+   * This ensures cleanup succeeds even when Windows keeps file handles open
+   * for several milliseconds after process termination
    */
   private async cleanupFiles(item: DownloadItem): Promise<void> {
     if (!item.outputPath) return;
@@ -1283,19 +1419,19 @@ export class VideoDownloadService extends EventEmitter {
               const renamedPath = renameFileForDeletion(file);
               if (renamedPath) {
                 console.log(
-                  `[VideoDownload] Renamed file for deletion: ${file} -> ${renamedPath}`
+                  `[VideoDownload] Renamed file for deletion: ${file} -> ${renamedPath}`,
                 );
                 // Try to delete immediately
                 const immediateSuccess = await deleteFileWithRetry(
                   renamedPath,
                   5,
-                  1000
+                  1000,
                 );
                 if (!immediateSuccess) {
                   // Schedule for later deletion
                   scheduleFileDeletion(renamedPath, 15000);
                   console.log(
-                    `[VideoDownload] Scheduled deletion for: ${renamedPath}`
+                    `[VideoDownload] Scheduled deletion for: ${renamedPath}`,
                   );
                 }
               } else {
@@ -1303,7 +1439,7 @@ export class VideoDownloadService extends EventEmitter {
                 const success = await deleteFileWithRetry(
                   file,
                   maxRetries,
-                  retryDelay
+                  retryDelay,
                 );
                 if (!success) {
                   // Final attempt after longer wait
@@ -1316,7 +1452,7 @@ export class VideoDownloadService extends EventEmitter {
               const success = await deleteFileWithRetry(
                 file,
                 maxRetries,
-                retryDelay
+                retryDelay,
               );
               if (success) {
                 console.log(`[VideoDownload] Deleted file: ${file}`);
@@ -1345,7 +1481,7 @@ export class VideoDownloadService extends EventEmitter {
                 await deleteFileWithRetry(
                   path.join(item.outputPath, file),
                   maxRetries,
-                  retryDelay
+                  retryDelay,
                 );
               }
             }
@@ -1355,7 +1491,7 @@ export class VideoDownloadService extends EventEmitter {
     } catch (error) {
       console.error(
         `[VideoDownload] Error during file cleanup for ${item.id}:`,
-        error
+        error,
       );
     }
   }
@@ -1465,7 +1601,7 @@ export class VideoDownloadService extends EventEmitter {
       (d) =>
         d.status !== DownloadStatus.COMPLETED &&
         d.status !== DownloadStatus.CANCELLED &&
-        d.status !== DownloadStatus.FAILED
+        d.status !== DownloadStatus.FAILED,
     );
     return before - this.downloadQueue.length;
   }

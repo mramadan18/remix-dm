@@ -23,6 +23,7 @@ export interface VideoFormat {
   hasVideo: boolean;
   hasAudio: boolean;
   tbr: number | null; // Total bitrate
+  protocol?: string | null; // Download protocol (e.g., "https", "m3u8_native" for HLS)
 }
 
 /**
@@ -176,6 +177,7 @@ export interface DownloadOptions {
   rateLimit?: string; // e.g., '1M' for 1MB/s limit
   proxy?: string;
   cookies?: string; // Path to cookies file
+  verbose?: boolean; // Enable verbose logging for debugging (e.g., YouTube empty file errors)
 }
 
 /**
