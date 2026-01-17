@@ -3,7 +3,7 @@
   "name": "remixdm",
   "productName": "RemixDM",
   "description": "A professional-grade desktop application for lightning-fast bulk media downloads, playlists, and high-quality video content from hundreds of sources.",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "author": "Mahmoud Ramadan <m.ramadan181199@gmail.com>",
   "main": "app/background.js",
   "scripts": {
