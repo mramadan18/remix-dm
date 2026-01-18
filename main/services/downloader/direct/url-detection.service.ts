@@ -190,7 +190,7 @@ const DIRECT_DOWNLOAD_EXTENSIONS = [
  * Extract filename from Content-Disposition header
  */
 function extractFilenameFromHeader(
-  contentDisposition: string | undefined
+  contentDisposition: string | undefined,
 ): string | undefined {
   if (!contentDisposition) return undefined;
 
@@ -208,7 +208,7 @@ function extractFilenameFromHeader(
 
     // Try standard format: filename="example.zip" or filename=example.zip
     const standardMatch = contentDisposition.match(
-      /filename\s*=\s*["']?([^"';]+)["']?/i
+      /filename\s*=\s*["']?([^"';]+)["']?/i,
     );
     if (standardMatch) {
       const filename = standardMatch[1].trim();
@@ -223,7 +223,7 @@ function extractFilenameFromHeader(
   } catch (error) {
     console.warn(
       "[URLDetection] Failed to extract filename from header:",
-      error
+      error,
     );
   }
 
@@ -390,7 +390,7 @@ function isDirectDownloadContentType(contentType: string | undefined): boolean {
   if (!contentType) return false;
   const normalizedType = contentType.toLowerCase().split(";")[0].trim();
   return DIRECT_DOWNLOAD_CONTENT_TYPES.some(
-    (type) => normalizedType === type || normalizedType.startsWith(type + "/")
+    (type) => normalizedType === type || normalizedType.startsWith(type + "/"),
   );
 }
 
@@ -401,7 +401,7 @@ function isWebPageContentType(contentType: string | undefined): boolean {
   if (!contentType) return false;
   const normalizedType = contentType.toLowerCase().split(";")[0].trim();
   return WEB_PAGE_CONTENT_TYPES.some(
-    (type) => normalizedType === type || normalizedType.startsWith(type)
+    (type) => normalizedType === type || normalizedType.startsWith(type),
   );
 }
 
@@ -410,7 +410,7 @@ function isWebPageContentType(contentType: string | undefined): boolean {
  */
 async function performHeadRequest(
   url: string,
-  maxRedirects: number = 5
+  maxRedirects: number = 5,
 ): Promise<{
   contentType?: string;
   contentLength?: number;
@@ -465,7 +465,9 @@ async function performHeadRequest(
 
           if (await isPrivateUrl(redirectUrl)) {
             reject(
-              new Error("Redirect to private network blocked (SSRF protection)")
+              new Error(
+                "Redirect to private network blocked (SSRF protection)",
+              ),
             );
             return;
           }
@@ -512,7 +514,7 @@ async function performHeadRequest(
  */
 export async function detectLinkType(
   url: string,
-  mode: DetectionMode = "auto"
+  mode: DetectionMode = "auto",
 ): Promise<LinkTypeResult> {
   try {
     // 0. If mode is forced to video, return non-direct immediately
@@ -595,7 +597,7 @@ export async function detectLinkType(
       if (headResult.contentType) {
         const isWebPage = isWebPageContentType(headResult.contentType);
         const isDirectDownload = isDirectDownloadContentType(
-          headResult.contentType
+          headResult.contentType,
         );
 
         if (isWebPage) {
@@ -628,7 +630,7 @@ export async function detectLinkType(
       // If Content-Disposition has filename, likely direct download
       if (headResult.contentDisposition) {
         const filename = extractFilenameFromHeader(
-          headResult.contentDisposition
+          headResult.contentDisposition,
         );
         if (filename) {
           return {
@@ -654,7 +656,7 @@ export async function detectLinkType(
       if (shouldLog) {
         console.warn(
           "[URLDetection] HEAD request failed, using fallback:",
-          headError
+          headError,
         );
       }
       // Continue to fallback logic
@@ -702,7 +704,7 @@ export async function detectLinkType(
  * @returns Map of URL to LinkTypeResult
  */
 export async function detectMultipleLinkTypes(
-  urls: string[]
+  urls: string[],
 ): Promise<Map<string, LinkTypeResult>> {
   const results = new Map<string, LinkTypeResult>();
 
@@ -719,7 +721,7 @@ export async function detectMultipleLinkTypes(
       chunk.map(async (url) => {
         const result = await detectLinkType(url);
         return { url, result };
-      })
+      }),
     );
 
     for (const { url, result } of chunkResults) {

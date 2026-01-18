@@ -148,7 +148,7 @@ class DirectDownloadService extends EventEmitter {
             } catch (err) {
               console.warn(
                 "[DirectDownload] Background initialization failed:",
-                err
+                err,
               );
             }
           })();
@@ -191,7 +191,7 @@ class DirectDownloadService extends EventEmitter {
         // Reject all pending requests on error
         for (const [id, { reject: rejectRequest }] of this.pendingRequests) {
           rejectRequest(
-            error instanceof Error ? error : new Error(String(error))
+            error instanceof Error ? error : new Error(String(error)),
           );
         }
         this.pendingRequests.clear();
@@ -213,7 +213,7 @@ class DirectDownloadService extends EventEmitter {
 
     while (!this.connected) {
       console.log(
-        `[DirectDownload] Connection lost. Attempting background reconnect...`
+        `[DirectDownload] Connection lost. Attempting background reconnect...`,
       );
 
       try {
@@ -268,7 +268,7 @@ class DirectDownloadService extends EventEmitter {
   private handleNotification(method: string, params: unknown[]): void {
     console.log(
       `[DirectDownload] Notification received: ${method}`,
-      JSON.stringify(params)
+      JSON.stringify(params),
     ); // debug logging
 
     const gid = params?.[0]?.["gid"] || params?.[0];
@@ -301,7 +301,7 @@ class DirectDownloadService extends EventEmitter {
               status?.errorMessage || "Download failed (Unknown reason)";
             console.error(
               `[DirectDownload] ERROR reported by aria2 for GID ${gid}:`,
-              error
+              error,
             );
             this.handleDownloadError(downloadId, error);
           })
@@ -318,7 +318,7 @@ class DirectDownloadService extends EventEmitter {
   private async sendRequest(
     method: string,
     params: unknown[] = [],
-    timeoutMs = 5000 // Reduced from 20s for faster hang detection
+    timeoutMs = 5000, // Reduced from 20s for faster hang detection
   ): Promise<unknown> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       await this.connect();
@@ -338,7 +338,7 @@ class DirectDownloadService extends EventEmitter {
         // If too many timeouts, force a reconnect
         if (this.consecutiveTimeouts >= this.MAX_CONSECUTIVE_TIMEOUTS) {
           console.warn(
-            "[DirectDownload] Multiple RPC timeouts, forcing reconnect..."
+            "[DirectDownload] Multiple RPC timeouts, forcing reconnect...",
           );
           this.consecutiveTimeouts = 0;
           this.forceReconnect();
@@ -368,7 +368,7 @@ class DirectDownloadService extends EventEmitter {
 
       console.log(
         `[DirectDownload] Sending RPC request: ${method}`,
-        JSON.stringify(params)
+        JSON.stringify(params),
       );
       this.ws!.send(JSON.stringify(request));
     });
@@ -380,7 +380,7 @@ class DirectDownloadService extends EventEmitter {
   private async forceReconnect(): Promise<void> {
     this.rpcFailureCount++;
     console.warn(
-      `[DirectDownload] Recovery triggered (Attempt ${this.rpcFailureCount})`
+      `[DirectDownload] Recovery triggered (Attempt ${this.rpcFailureCount})`,
     );
 
     // 1. Close current connection and cleanup listeners/intervals
@@ -429,7 +429,7 @@ class DirectDownloadService extends EventEmitter {
       const hasActiveTasks = Array.from(this.downloads.values()).some(
         (d) =>
           d.status === DownloadStatus.DOWNLOADING ||
-          d.status === DownloadStatus.PENDING
+          d.status === DownloadStatus.PENDING,
       );
 
       if (!this.connected || !hasActiveTasks) {
@@ -479,11 +479,11 @@ class DirectDownloadService extends EventEmitter {
                 // Log if status is error
                 if (status.status === "error") {
                   console.error(
-                    `[DirectDownload] Polled task ${gid} has ERROR status. Code: ${status.errorCode}, Message: ${status.errorMessage}`
+                    `[DirectDownload] Polled task ${gid} has ERROR status. Code: ${status.errorCode}, Message: ${status.errorMessage}`,
                   );
                   this.handleDownloadError(
                     downloadId,
-                    (status.errorMessage as string) || "Download failed"
+                    (status.errorMessage as string) || "Download failed",
                   );
                 } else {
                   this.updateProgressFromStatus(downloadId, status);
@@ -538,21 +538,21 @@ class DirectDownloadService extends EventEmitter {
     const hasActiveDownloads = Array.from(this.downloads.values()).some(
       (d) =>
         d.status === DownloadStatus.DOWNLOADING ||
-        d.status === DownloadStatus.PENDING
+        d.status === DownloadStatus.PENDING,
     );
 
     if (hasActiveDownloads && this.powerSaveBlockerId === null) {
       this.powerSaveBlockerId = powerSaveBlocker.start(
-        "prevent-app-suspension"
+        "prevent-app-suspension",
       );
       console.log(
-        "[DirectDownload] Power save blocker STARTED (Active downloads detected)"
+        "[DirectDownload] Power save blocker STARTED (Active downloads detected)",
       );
     } else if (!hasActiveDownloads && this.powerSaveBlockerId !== null) {
       powerSaveBlocker.stop(this.powerSaveBlockerId);
       this.powerSaveBlockerId = null;
       console.log(
-        "[DirectDownload] Power save blocker STOPPED (No active downloads)"
+        "[DirectDownload] Power save blocker STOPPED (No active downloads)",
       );
     }
   }
@@ -572,7 +572,7 @@ class DirectDownloadService extends EventEmitter {
    */
   private updateProgressFromStatus(
     downloadId: string,
-    status: Record<string, unknown>
+    status: Record<string, unknown>,
   ): void {
     const download = this.downloads.get(downloadId);
     if (!download) return;
@@ -602,7 +602,7 @@ class DirectDownloadService extends EventEmitter {
     // Verify status and log errors
     if (aria2Status === "error") {
       console.error(
-        `[DirectDownload] Task ${downloadId} (GID: ${status.gid}) changed to ERROR status. ErrorCode: ${status.errorCode}, ErrorMessage: ${status.errorMessage}`
+        `[DirectDownload] Task ${downloadId} (GID: ${status.gid}) changed to ERROR status. ErrorCode: ${status.errorCode}, ErrorMessage: ${status.errorMessage}`,
       );
     }
 
@@ -642,7 +642,7 @@ class DirectDownloadService extends EventEmitter {
    */
   private updateDownloadStatus(
     downloadId: string,
-    status: DownloadStatus
+    status: DownloadStatus,
   ): void {
     const download = this.downloads.get(downloadId);
     if (!download) return;
@@ -692,11 +692,11 @@ class DirectDownloadService extends EventEmitter {
    */
   private async handleDownloadError(
     downloadId: string,
-    errorMessage: string
+    errorMessage: string,
   ): Promise<void> {
     console.error(
       `[DirectDownload] handleDownloadError triggered for ${downloadId}:`,
-      errorMessage
+      errorMessage,
     );
     const download = this.downloads.get(downloadId);
     if (!download) return;
@@ -727,7 +727,7 @@ class DirectDownloadService extends EventEmitter {
         } catch (error) {
           console.warn(
             "[DirectDownload] Could not cache paths on error:",
-            error
+            error,
           );
         }
 
@@ -760,13 +760,13 @@ class DirectDownloadService extends EventEmitter {
               const controlDeleted = await deleteFileWithRetry(
                 aria2File,
                 5,
-                500
+                500,
               );
               const logName = path.basename(filePath);
               console.log(
                 `[DirectDownload] Error Cleanup: ${logName} -> ${
                   fileDeleted ? "Cleaned" : "Failed"
-                } (Control: ${controlDeleted ? "OK" : "Error"})`
+                } (Control: ${controlDeleted ? "OK" : "Error"})`,
               );
             }
           }
@@ -845,13 +845,13 @@ class DirectDownloadService extends EventEmitter {
         linkInfo = await Promise.race([
           detectLinkType(options.url, "direct"),
           new Promise<any>((_, reject) =>
-            setTimeout(() => reject(new Error("Timeout")), 5000)
+            setTimeout(() => reject(new Error("Timeout")), 5000),
           ),
         ]);
       } catch (err) {
         console.warn(
           "[DirectDownload] Link detection failed, proceeding with defaults:",
-          err instanceof Error ? err.message : String(err)
+          err instanceof Error ? err.message : String(err),
         );
         // Fallback to a timestamp-based filename if no other name is available
         linkInfo = { filename: `download_${Date.now()}` };
@@ -881,7 +881,7 @@ class DirectDownloadService extends EventEmitter {
             };
           } else if (settings.onFileExists === "overwrite") {
             console.log(
-              `[DirectDownload] File exists, overwriting: ${fullPath}`
+              `[DirectDownload] File exists, overwriting: ${fullPath}`,
             );
             try {
               if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
@@ -890,13 +890,13 @@ class DirectDownloadService extends EventEmitter {
             } catch (err) {
               console.warn(
                 `[DirectDownload] Failed to delete existing file for overwrite:`,
-                err
+                err,
               );
             }
           } else if (settings.onFileExists === "rename") {
             finalFilename = generateUniqueFilename(outputDir, finalFilename);
             console.log(
-              `[DirectDownload] File exists, renamed to: ${finalFilename}`
+              `[DirectDownload] File exists, renamed to: ${finalFilename}`,
             );
           }
         }
@@ -918,7 +918,7 @@ class DirectDownloadService extends EventEmitter {
           ) {
             console.log(
               `[DirectDownload] Found existing active task (${d.status}) for:`,
-              targetFilename || options.url
+              targetFilename || options.url,
             );
             return { success: true, data: d };
           }
@@ -931,7 +931,7 @@ class DirectDownloadService extends EventEmitter {
           ) {
             console.log(
               "[DirectDownload] Removing old task to avoid duplicates:",
-              d.filename || d.id
+              d.filename || d.id,
             );
             await this.cancelDownload(id);
           }
@@ -954,7 +954,7 @@ class DirectDownloadService extends EventEmitter {
           return {
             success: false,
             error: `Insufficient disk space. Available: ${freeSpaceMB}MB, Required: ${Math.round(
-              minRequiredSpace / (1024 * 1024)
+              minRequiredSpace / (1024 * 1024),
             )}MB`,
           };
         }
@@ -965,8 +965,8 @@ class DirectDownloadService extends EventEmitter {
             if (freeSpace !== null && freeSpace < 100 * 1024 * 1024) {
               console.warn(
                 `[DirectDownload] Low disk space warning: ${Math.round(
-                  freeSpace / (1024 * 1024)
-                )}MB available`
+                  freeSpace / (1024 * 1024),
+                )}MB available`,
               );
             }
           })
@@ -1051,7 +1051,7 @@ class DirectDownloadService extends EventEmitter {
         gid = (await this.sendRequest(
           "aria2.addUri",
           [[finalUrl], aria2Options],
-          60000
+          60000,
         )) as string;
       } catch (error) {
         // Cleanup on failure
@@ -1062,7 +1062,7 @@ class DirectDownloadService extends EventEmitter {
       // 4. Check if the job was cancelled while we were waiting for addUri
       if (!this.downloads.has(downloadId)) {
         console.warn(
-          `[DirectDownload] Job ${downloadId} was cancelled during initialization. Purging new GID: ${gid}`
+          `[DirectDownload] Job ${downloadId} was cancelled during initialization. Purging new GID: ${gid}`,
         );
         this.removedGids.add(gid);
         this.sendRequest("aria2.forceRemove", [gid]).catch(() => {});
@@ -1079,7 +1079,7 @@ class DirectDownloadService extends EventEmitter {
         const existingItem = this.downloads.get(existingIdForGid);
         if (existingItem) {
           console.log(
-            `[DirectDownload] Aria2 matched new request to existing GID: ${gid}`
+            `[DirectDownload] Aria2 matched new request to existing GID: ${gid}`,
           );
           // Cleanup our temporary item and return the existing one
           this.downloads.delete(downloadId);
@@ -1138,7 +1138,7 @@ class DirectDownloadService extends EventEmitter {
         download.status !== DownloadStatus.PENDING
       ) {
         console.warn(
-          `[DirectDownload] Cannot resume download in status ${download.status}`
+          `[DirectDownload] Cannot resume download in status ${download.status}`,
         );
         return false;
       }
@@ -1197,7 +1197,7 @@ class DirectDownloadService extends EventEmitter {
             const status = (await this.sendRequest(
               "aria2.tellStatus",
               [gid, ["files"]],
-              5000
+              5000,
             ).catch(() => null)) as any;
 
             if (status?.files) {
@@ -1357,7 +1357,7 @@ class DirectDownloadService extends EventEmitter {
         console.warn(
           `[DirectDownload] Restoring lost download: ${
             download.filename || download.url
-          }`
+          }`,
         );
 
         try {
@@ -1395,11 +1395,11 @@ class DirectDownloadService extends EventEmitter {
         } catch (err) {
           console.error(
             `[DirectDownload] Failed to restore download ${id}:`,
-            err
+            err,
           );
           this.handleDownloadError(
             id,
-            "Restoration failed after daemon restart"
+            "Restoration failed after daemon restart",
           );
         }
       }
@@ -1531,7 +1531,7 @@ class DirectDownloadService extends EventEmitter {
         } catch (err) {
           console.warn(
             `[DirectDownload] Failed to parse synced task ${task.gid}:`,
-            err
+            err,
           );
         }
       }
@@ -1553,7 +1553,7 @@ class DirectDownloadService extends EventEmitter {
         },
       ]);
       console.log(
-        `[DirectDownload] Global settings updated: max-concurrent=${settings.maxConcurrentDownloads}`
+        `[DirectDownload] Global settings updated: max-concurrent=${settings.maxConcurrentDownloads}`,
       );
     } catch (err) {
       console.warn("[DirectDownload] Failed to update global options:", err);

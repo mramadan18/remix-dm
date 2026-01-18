@@ -261,6 +261,7 @@ export class SingleVideoDownloader extends BaseDownloader {
       args.push("--no-part"); // Prevents WinError 32
       args.push("--trim-filenames", "160"); // Avoids long path issues
     } else {
+      args.push("--no-playlist");
       args.push("--trim-filenames", "160");
     }
 
