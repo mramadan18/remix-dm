@@ -82,7 +82,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -92,7 +92,7 @@ export function initializeDownloadIpc(): void {
     "download:check-url",
     async (
       _,
-      url: string
+      url: string,
     ): Promise<
       ApiResponse<{ supported: boolean; platform: string | null }>
     > => {
@@ -112,7 +112,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -126,8 +126,8 @@ export function initializeDownloadIpc(): void {
     DownloadIpcChannels.START_DOWNLOAD,
     async (
       _,
-      payload: { videoInfo: VideoInfo | null; options: DownloadOptions }
-    ): Promise<ApiResponse<DownloadItem>> => {
+      payload: { videoInfo: VideoInfo | null; options: DownloadOptions },
+    ): Promise<ApiResponse<DownloadItem | DownloadItem[]>> => {
       try {
         const { videoInfo, options } = payload;
         const result = await videoDownloader.startDownload(videoInfo, options);
@@ -138,7 +138,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -163,7 +163,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -174,7 +174,7 @@ export function initializeDownloadIpc(): void {
     async (_, downloadId: string): Promise<ApiResponse<boolean>> => {
       try {
         // Try video downloader first
-        let success = videoDownloader.resumeDownload(downloadId);
+        let success = await videoDownloader.resumeDownload(downloadId);
 
         // If not found or failed, try direct downloader
         if (!success) {
@@ -188,7 +188,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -213,7 +213,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -223,7 +223,7 @@ export function initializeDownloadIpc(): void {
     DownloadIpcChannels.GET_DOWNLOAD_STATUS,
     async (
       _,
-      downloadId: string
+      downloadId: string,
     ): Promise<ApiResponse<DownloadItem | null>> => {
       try {
         // Check video downloads
@@ -241,7 +241,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -268,7 +268,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -287,7 +287,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -315,7 +315,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -339,7 +339,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -363,7 +363,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -387,7 +387,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -405,7 +405,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -429,7 +429,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -451,7 +451,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -468,7 +468,7 @@ export function initializeDownloadIpc(): void {
         | "others"
         | "programs"
         | "compressed"
-        | "documents"
+        | "documents",
     ): Promise<ApiResponse<string>> => {
       try {
         const path = getDownloadSubPath(type);
@@ -479,7 +479,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -493,7 +493,7 @@ export function initializeDownloadIpc(): void {
     DownloadIpcChannels.DETECT_LINK_TYPE,
     async (
       _,
-      payload: { url: string; mode?: DetectionMode } | string
+      payload: { url: string; mode?: DetectionMode } | string,
     ): Promise<ApiResponse<LinkTypeResult>> => {
       try {
         const url = typeof payload === "string" ? payload : payload.url;
@@ -506,7 +506,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -524,7 +524,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -542,7 +542,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -560,7 +560,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -578,7 +578,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   /**
@@ -596,7 +596,7 @@ export function initializeDownloadIpc(): void {
           error: error instanceof Error ? error.message : "Unknown error",
         };
       }
-    }
+    },
   );
 
   // ═══════════════════════════════════════════════════════════════════════════

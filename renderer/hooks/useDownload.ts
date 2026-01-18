@@ -44,7 +44,7 @@ export async function extractVideoInfo(
 export async function startDownload(
   videoInfo: VideoInfo | null,
   options: DownloadOptions,
-): Promise<ApiResponse<DownloadItem>> {
+): Promise<ApiResponse<DownloadItem | DownloadItem[]>> {
   try {
     const result = await window.ipc.invoke(DownloadIpcChannels.START_DOWNLOAD, {
       videoInfo,

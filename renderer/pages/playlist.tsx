@@ -3,7 +3,7 @@ import {
   UrlInputCard,
   PlaylistToolbar,
   PlaylistVideoList,
-  PlaylistFooter,
+  PlaylistActions,
 } from "../components/screens/Playlists";
 import { usePlaylistDownload } from "../hooks/usePlaylistDownload";
 
@@ -34,7 +34,7 @@ const PlaylistPage = () => {
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      <div className="flex flex-col gap-6 mb-6">
+      <div className="flex flex-col gap-6 mb-2">
         <PlaylistHeader />
         <UrlInputCard
           url={url}
@@ -54,6 +54,14 @@ const PlaylistPage = () => {
 
       {videoInfo && videoInfo.playlist && (
         <div className="flex-1 min-h-0 flex flex-col gap-4 animate-appearance-in">
+          <PlaylistActions
+            selectedCount={selectedCount}
+            onDownload={handleDownloadSelected}
+            isLoading={isBulkDownloading}
+            selectedQuality={selectedQuality}
+            onQualityChange={setSelectedQuality}
+          />
+
           <PlaylistToolbar
             selectedCount={selectedCount}
             totalCount={totalCount}
@@ -67,14 +75,6 @@ const PlaylistPage = () => {
             items={filteredItems}
             selectedItems={selected}
             onToggleItem={toggleSelect}
-          />
-
-          <PlaylistFooter
-            selectedCount={selectedCount}
-            onDownload={handleDownloadSelected}
-            isLoading={isBulkDownloading}
-            selectedQuality={selectedQuality}
-            onQualityChange={setSelectedQuality}
           />
         </div>
       )}

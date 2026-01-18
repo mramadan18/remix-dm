@@ -176,6 +176,7 @@ export interface DownloadOptions {
   rateLimit?: string;
   proxy?: string;
   cookies?: string;
+  isPlaylist?: boolean;
 }
 
 /**

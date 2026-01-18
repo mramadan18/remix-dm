@@ -2,7 +2,7 @@ import { Button } from "@heroui/react";
 import { Download } from "lucide-react";
 import { PlaylistQualitySelector } from "./PlaylistQualitySelector";
 
-interface PlaylistFooterProps {
+interface PlaylistActionsProps {
   selectedCount: number;
   onDownload: () => void;
   isLoading?: boolean;
@@ -10,7 +10,7 @@ interface PlaylistFooterProps {
   onQualityChange: (quality: string) => void;
 }
 
-export const PlaylistFooter: React.FC<PlaylistFooterProps> = ({
+export const PlaylistActions: React.FC<PlaylistActionsProps> = ({
   selectedCount,
   onDownload,
   isLoading,
@@ -18,7 +18,7 @@ export const PlaylistFooter: React.FC<PlaylistFooterProps> = ({
   onQualityChange,
 }) => {
   return (
-    <div className="py-4 border-t border-divider mt-4 flex items-center justify-between bg-default-50/50 -mx-6 -mb-6 px-8 rounded-b-2xl backdrop-blur-md">
+    <div className="py-4 px-6 flex items-center justify-between bg-default-50/50 rounded-2xl backdrop-blur-md border border-divider shadow-sm">
       <PlaylistQualitySelector
         selectedQuality={selectedQuality}
         onQualityChange={onQualityChange}

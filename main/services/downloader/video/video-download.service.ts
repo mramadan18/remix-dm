@@ -281,12 +281,28 @@ export class VideoDownloadService extends EventEmitter {
     return true;
   }
 
-  resumeDownload(id: string) {
+  async resumeDownload(id: string) {
     const i = this.downloadQueue.find((d) => d.id === id);
-    if (!i || i.status !== DownloadStatus.PAUSED) return false;
-    i.status = DownloadStatus.PENDING;
-    this.processQueue();
-    return true;
+    if (!i) return false;
+
+    if (i.status === DownloadStatus.PAUSED) {
+      i.status = DownloadStatus.PENDING;
+      this.processQueue();
+      return true;
+    }
+
+    if (i.status === DownloadStatus.FAILED) {
+      i.status = DownloadStatus.PENDING;
+      i.error = null;
+      i.progress.progress = 0;
+      i.progress.downloadedBytes = 0;
+      // Clean up any partial files to ensure a fresh start
+      await this.single.cleanupFiles(i);
+      this.processQueue();
+      return true;
+    }
+
+    return false;
   }
 
   async cancelDownload(id: string) {
