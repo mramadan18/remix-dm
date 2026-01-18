@@ -3,8 +3,6 @@ import {
   useVideoInfo,
   startDownload,
   DownloadQuality,
-  detectLinkType,
-  startDirectDownload,
   useVideoActions,
   DownloadItem,
 } from "./useDownload";
@@ -16,6 +14,7 @@ import {
   getAvailableQualityOptions,
 } from "../utils/formatters";
 import { ApiResponse } from "../types/download";
+import { useRouter } from "next/router";
 
 export interface UseSingleDownloadReturn {
   // State
@@ -50,6 +49,7 @@ export interface UseSingleDownloadReturn {
  * Custom hook for managing single download logic
  */
 export function useSingleDownload(): UseSingleDownloadReturn {
+  const router = useRouter();
   // Local state
   const [url, setUrl] = useState("");
   const [selectedQuality, setSelectedQuality] = useState<string>("");
@@ -80,17 +80,19 @@ export function useSingleDownload(): UseSingleDownloadReturn {
     return selectedQuality === DownloadQuality.AUDIO_ONLY;
   }, [selectedQuality]);
 
-  const isGreater1080p = useMemo(() => {
+  const isGreaterThan1080p = useMemo(() => {
     return Number(selectedQuality?.split("p")?.[0]) > 1080;
   }, [selectedQuality]);
 
   const currentFormats = useMemo(() => {
-    return isAudioOnly
-      ? AUDIO_FORMAT_OPTIONS
-      : isGreater1080p
-      ? FORMAT_OPTIONS.filter((f) => f.key === "mkv")
-      : FORMAT_OPTIONS;
-  }, [isAudioOnly, isGreater1080p]);
+    if (isAudioOnly) return AUDIO_FORMAT_OPTIONS;
+
+    if (isGreaterThan1080p) {
+      return FORMAT_OPTIONS.filter((f) => f.key === "mkv");
+    } else {
+      return FORMAT_OPTIONS;
+    }
+  }, [isAudioOnly, isGreaterThan1080p]);
 
   const availableQualities = useMemo(() => {
     return getAvailableQualityOptions(videoInfo);
@@ -107,17 +109,23 @@ export function useSingleDownload(): UseSingleDownloadReturn {
     }
   }, [availableQualities, selectedQuality]);
 
-  // Set default format when current formats change
+  // Set default format based on quality when formats change
   useEffect(() => {
     if (currentFormats.length > 0) {
-      if (
-        !selectedFormat ||
-        !currentFormats.find((f) => f.key === selectedFormat)
-      ) {
+      // For video formats, choose MP4 for <= 1080p, MKV for > 1080p
+      if (!isAudioOnly) {
+        const qualityNum = Number(selectedQuality?.split("p")?.[0]);
+        if (qualityNum > 1080) {
+          setSelectedFormat("mkv");
+        } else {
+          setSelectedFormat("mp4");
+        }
+      } else {
+        // For audio, keep the first option (usually mp3)
         setSelectedFormat(currentFormats[0].key);
       }
     }
-  }, [currentFormats, selectedFormat]);
+  }, [currentFormats, selectedFormat, isAudioOnly, selectedQuality]);
 
   // Handle URL input change
   const handleUrlChange = useCallback(
@@ -126,7 +134,7 @@ export function useSingleDownload(): UseSingleDownloadReturn {
       reset();
       setDownloadStatus(null);
     },
-    [reset]
+    [reset],
   );
 
   // Handle URL fetch
@@ -149,7 +157,7 @@ export function useSingleDownload(): UseSingleDownloadReturn {
       const platformInfo = detectPlatform(trimmedUrl);
       const platformName = platformInfo ? platformInfo.name : "this platform";
       setError(
-        `This link appears to be a ${platformName} playlist. Please use the 'Playlist/Channel' page for bulk downloads.`
+        `This link appears to be a ${platformName} playlist. Please use the 'Playlist/Channel' page for bulk downloads.`,
       );
       return;
     }
@@ -201,7 +209,7 @@ export function useSingleDownload(): UseSingleDownloadReturn {
       reset();
       const platformName = result.data.extractorKey || "this platform";
       setError(
-        `This link was detected as a ${platformName} playlist. Please use the 'Playlist/Channel' page for bulk downloads.`
+        `This link was detected as a ${platformName} playlist. Please use the 'Playlist/Channel' page for bulk downloads.`,
       );
     }
   }, [url, extract, reset, setError, detectLinkType]);
@@ -213,7 +221,7 @@ export function useSingleDownload(): UseSingleDownloadReturn {
         handleFetch();
       }
     },
-    [handleFetch]
+    [handleFetch],
   );
 
   // Handle download
@@ -249,15 +257,13 @@ export function useSingleDownload(): UseSingleDownloadReturn {
       }
 
       if (result.success) {
-        setDownloadStatus(
-          "Download started! Check Downloads tab for progress."
-        );
+        router.push("/downloads");
       } else {
         setDownloadStatus(`Error: ${result.error}`);
       }
     } catch (err) {
       setDownloadStatus(
-        `Error: ${err instanceof Error ? err.message : "Unknown error"}`
+        `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
       );
     } finally {
       setIsDownloading(false);

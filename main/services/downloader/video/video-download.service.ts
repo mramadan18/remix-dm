@@ -17,10 +17,6 @@ import {
 } from "../../utils/binary-manager";
 import {
   getDownloadSubPath,
-  sanitizeFilename,
-  formatBytes,
-  formatSpeed,
-  formatETA,
   parseBytes,
   deleteFileWithRetry,
   renameFileForDeletion,
@@ -75,6 +71,9 @@ export class VideoDownloadService extends EventEmitter {
       // OPTIMIZATION: Limit playlist items for initial metadata fetch
       // For large playlists (e.g., 500+ videos), fetching all metadata at once
       // can cause huge JSON parsing delays. We limit to first 100 items.
+      // NOTE: Do NOT use android,web player_client here
+      // YouTube now requires PO Token for android client which blocks most formats
+      // Using default clients gives us all available formats
       const args = [
         url,
         "--dump-single-json",
@@ -375,12 +374,15 @@ export class VideoDownloadService extends EventEmitter {
    * Helper to extract numeric height from resolution string or format
    */
   private getHeightFromFormat(format: VideoFormat): number | null {
-    // Try resolution string first (e.g., "1920x1080")
+    // Try resolution string first
     if (format.resolution) {
-      const match = format.resolution.match(/(\d+)p/);
-      if (match) return parseInt(match[1]);
-      const resMatch = format.resolution.match(/x(\d+)/);
-      if (resMatch) return parseInt(resMatch[1]);
+      // Match "1080p" format
+      const pMatch = format.resolution.match(/(\d+)p/);
+      if (pMatch) return parseInt(pMatch[1]);
+
+      // Match "1920x1080" or "256x144" format (widthxheight)
+      const wxhMatch = format.resolution.match(/(\d+)x(\d+)/);
+      if (wxhMatch) return parseInt(wxhMatch[2]); // Return height (second number)
     }
 
     // Try quality field (e.g., "1080p")
@@ -441,11 +443,16 @@ export class VideoDownloadService extends EventEmitter {
       args.push("--force-overwrites");
     }
 
-    // CRITICAL FIX FOR YOUTUBE EMPTY FILE ERROR:
-    // Use Android and Web player clients instead of desktop client
-    // YouTube's bot detection is more lenient with mobile clients
-    // This is THE most important fix for "downloaded file is empty" errors
-    args.push("--extractor-args", "youtube:player_client=android,web");
+    // NOTE: Do NOT use android,web player_client here
+    // YouTube now requires PO Token for android client which blocks most formats
+    // The default client (android_sdkless + web_safari) provides all formats including AV1
+    // This must match what getVideoMetadata uses to ensure format IDs are valid
+
+    // 1. تقصير الاسم لضمان عدم تجاوز حد الـ 260 حرف في ويندوز
+    args.push("--trim-filenames", "100");
+
+    // 2. تجنب الرموز التي قد تسبب مشاكل في أنظمة الملفات القديمة
+    args.push("--windows-filenames");
 
     // Add ffmpeg location if available - REQUIRED for post-processing (merging & audio extraction)
     const ffmpegLocation = getFfmpegPath();
@@ -455,7 +462,22 @@ export class VideoDownloadService extends EventEmitter {
 
     // Quality/Format selection
     if (options.audioOnly) {
-      args.push("-f", "bestaudio");
+      // Robust audio selector: prefer m4a (most compatible), avoid HLS, fallback to any audio
+      // Using a fallback chain ensures we find something even if specific clients have limited formats
+      let formatSelector =
+        "bestaudio[ext=m4a][protocol!=m3u8_native]/bestaudio[ext=webm][protocol!=m3u8_native]/bestaudio/best";
+
+      // If we have video info and a quality option for audio, try to use its specific format ID first
+      if (videoInfo?.qualityOptions) {
+        const audioOpt = videoInfo.qualityOptions.find(
+          (opt) => opt.key === "bestaudio",
+        );
+        if (audioOpt?.audioFormat?.formatId) {
+          formatSelector = `${audioOpt.audioFormat.formatId}/${formatSelector}`;
+        }
+      }
+
+      args.push("-f", formatSelector);
       args.push("-x"); // Extract audio
       if (options.format) {
         args.push("--audio-format", options.format);
@@ -491,75 +513,67 @@ export class VideoDownloadService extends EventEmitter {
         );
 
         if (qualityOption) {
-          // Build format selector from the quality option
+          const height = qualityOption.videoFormat
+            ? this.getHeightFromFormat(qualityOption.videoFormat)
+            : null;
+          const videoId = qualityOption.videoFormat?.formatId;
+          const audioId = qualityOption.audioFormat?.formatId || "bestaudio";
+
           if (qualityOption.key === "bestaudio") {
-            formatSelector = "bestaudio";
-          } else if (qualityOption.videoFormat && qualityOption.audioFormat) {
-            // DASH streams (YouTube, Vimeo, Facebook, etc.): video + audio separate
-            // IMPORTANT: Use descriptive selectors, NOT just format IDs
-            // This ensures YouTube sends DASH (stable) instead of HLS (unreliable)
-            const height = this.getHeightFromFormat(qualityOption.videoFormat);
-            const videoId = qualityOption.videoFormat.formatId;
-            const audioId = qualityOption.audioFormat.formatId;
+            formatSelector = "bestaudio/best";
+          } else if (height) {
+            // Solution:
+            // 1. Try EXACT IDs from metadata
+            // 2. Try best video at or below target height + best audio
+            // 3. Try any format at or below target height
+            // The '/' creates an OR condition, making it robust if IDs are unavailable
+            formatSelector = `${videoId}+${audioId}/bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
 
-            // Build format selector with YouTube-friendly fallback chain:
-            // 1. Try bestvideo+bestaudio at target height (lets yt-dlp choose best DASH)
-            // 2. Fallback to h264/avc1 (most compatible, mp4 container)
-            // 3. Avoid specific IDs unless absolutely necessary (can trigger bot detection)
-            // 4. Use [protocol!=m3u8_native] to explicitly avoid HLS
-            if (height) {
-              formatSelector =
-                `bestvideo[height<=${height}][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/` +
-                `bestvideo[vcodec^=avc1][height<=${height}]+bestaudio/` +
-                `bestvideo[height<=${height}]+bestaudio/` +
-                `best[height<=${height}]/best`;
-            } else {
-              formatSelector =
-                `bestvideo[ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/` +
-                `bestvideo[vcodec^=avc1]+bestaudio/` +
-                `bestvideo+bestaudio/best`;
-            }
-
-            console.log("[buildArgs] Using DASH streams with fallback");
-            console.log(`[buildArgs] Format selector: ${formatSelector}`);
-          } else if (qualityOption.videoFormat) {
-            // Combined formats (TikTok, Instagram, Facebook, Twitter, etc.)
-            // Video and audio are together in one stream
-            if (qualityOption.videoFormat.hasAudio) {
-              // Combined format - use just the formatId
-              // This ensures we get exactly the selected quality
-              formatSelector = qualityOption.videoFormat.formatId;
-            } else {
-              // Video-only format (rare case) - add best audio as fallback
-              formatSelector = `${qualityOption.videoFormat.formatId}+bestaudio`;
-            }
+            // Apply specific sorting to prioritize target resolution and compatibility
+            args.push("--format-sort", `res:${height},vcodec:h264,acodec:m4a`);
+          } else {
+            formatSelector = `${videoId}+${audioId}/bestvideo+bestaudio/best`;
+            args.push("--format-sort", "res,vcodec:h264,acodec:m4a");
           }
+
+          console.log("[buildArgs] Using robust format selector");
+          console.log(`[buildArgs] Format selector: ${formatSelector}`);
         }
       }
 
       console.log("[buildArgs] Final formatSelector:", formatSelector);
 
       // Fallback to qualityMap if formatSelector not found
-      // All selectors avoid HLS (m3u8_native) and prefer DASH with MP4 containers
+      // All selectors avoid unconstrained "best" to prevent quality jumps
       if (!formatSelector) {
         const qualityMap: Record<string, string> = {
-          [DownloadQuality.BEST_VIDEO]:
-            "bestvideo[ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1]+bestaudio/bestvideo+bestaudio/best",
+          [DownloadQuality.BEST_VIDEO]: "bestvideo+bestaudio/best",
           [DownloadQuality.QUALITY_4K]:
-            "bestvideo[height<=2160][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+            "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
           [DownloadQuality.QUALITY_1440P]:
-            "bestvideo[height<=1440][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=1440]+bestaudio/bestvideo[height<=1440]+bestaudio/best[height<=1440]",
+            "bestvideo[height<=1440]+bestaudio/best[height<=1440]",
           [DownloadQuality.QUALITY_1080P]:
-            "bestvideo[height<=1080][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=1080]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+            "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
           [DownloadQuality.QUALITY_720P]:
-            "bestvideo[height<=720][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=720]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]",
+            "bestvideo[height<=720]+bestaudio/best[height<=720]",
           [DownloadQuality.QUALITY_480P]:
-            "bestvideo[height<=480][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=480]+bestaudio/bestvideo[height<=480]+bestaudio/best[height<=480]",
+            "bestvideo[height<=480]+bestaudio/best[height<=480]",
           [DownloadQuality.QUALITY_360P]:
-            "bestvideo[height<=360][ext=mp4][protocol!=m3u8_native]+bestaudio[ext=m4a][protocol!=m3u8_native]/bestvideo[vcodec^=avc1][height<=360]+bestaudio/bestvideo[height<=360]+bestaudio/best[height<=360]",
-          [DownloadQuality.AUDIO_ONLY]: "bestaudio",
+            "bestvideo[height<=360]+bestaudio/best[height<=360]",
+          [DownloadQuality.AUDIO_ONLY]: "bestaudio/best",
         };
         formatSelector = qualityMap[options.quality] || options.quality;
+
+        // Apply general sorting for qualityMap
+        const resMatch = options.quality.match(/(\d+)p/);
+        if (resMatch) {
+          args.push(
+            "--format-sort",
+            `res:${resMatch[1]},vcodec:h264,acodec:m4a`,
+          );
+        } else {
+          args.push("--format-sort", "res,vcodec:h264,acodec:m4a");
+        }
       }
 
       args.push("-f", formatSelector);
@@ -636,6 +650,7 @@ export class VideoDownloadService extends EventEmitter {
     if (options.metadata?.embedInVideo) {
       args.push("--embed-metadata");
     }
+    args.push("--add-metadata");
 
     // Rate limit
     if (options.rateLimit) {
@@ -786,8 +801,8 @@ export class VideoDownloadService extends EventEmitter {
       filenameTemplate = options.filename;
     } else {
       // Default template: Title + extension
-      // %(title)s is the standard yt-dlp placeholder for the platform title
-      filenameTemplate = "%(title)s.%(ext)s";
+      // %(title).100s limits the title to 100 characters to avoid Windows long path errors (260 char limit)
+      filenameTemplate = "%(title).100s.%(ext)s";
     }
 
     // Get initial file size

@@ -1,4 +1,4 @@
-import { Card, CardBody, Progress, Button, Chip, Image } from "@heroui/react";
+import { Card, CardBody, Progress, Button, Chip } from "@heroui/react";
 import {
   Pause,
   Play,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { DownloadStatus, DownloadItem } from "../../../types/download";
 import { formatBytes } from "../../../utils/formatters";
+import Image from "next/image";
 
 interface DownloadCardProps {
   item: DownloadItem;
@@ -28,7 +29,7 @@ interface DownloadCardProps {
 }
 
 const getStatusColor = (
-  status: DownloadStatus
+  status: DownloadStatus,
 ): "primary" | "success" | "warning" | "danger" | "default" => {
   switch (status) {
     case DownloadStatus.DOWNLOADING:
@@ -192,26 +193,16 @@ export const DownloadCard = ({
           <div className="w-20 h-14 bg-default-100 rounded-lg overflow-hidden shrink-0">
             {item.videoInfo?.thumbnail ? (
               <Image
-                radius="none"
-                alt="Thumbnail"
                 src={item.videoInfo.thumbnail}
+                alt="Thumbnail"
                 onClick={() =>
                   item.status === DownloadStatus.COMPLETED &&
                   fullPath &&
                   onOpenFile(fullPath)
                 }
-                classNames={{
-                  wrapper: `w-full h-full ${
-                    item.status === DownloadStatus.COMPLETED
-                      ? "cursor-pointer"
-                      : "cursor-default"
-                  }`,
-                  img: `object-cover w-full h-full ${
-                    item.status === DownloadStatus.COMPLETED
-                      ? "hover:scale-115 transition-transform"
-                      : "opacity-70"
-                  }`,
-                }}
+                width={500}
+                height={500}
+                className={`w-full h-full object-contain ${item.status === DownloadStatus.COMPLETED ? "cursor-pointer" : "cursor-default"} ${item.status === DownloadStatus.COMPLETED ? "hover:scale-115 transition-transform" : "opacity-70"}`}
               />
             ) : (
               <div

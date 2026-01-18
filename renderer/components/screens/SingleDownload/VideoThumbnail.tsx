@@ -1,7 +1,7 @@
-import { Image } from "@heroui/react";
 import { FileVideo, User } from "lucide-react";
 import { formatDuration } from "../../../utils/formatters";
 import { VideoInfo } from "../../../types/download";
+import Image from "next/image";
 
 export const VideoThumbnail = ({
   thumbnail,
@@ -16,10 +16,9 @@ export const VideoThumbnail = ({
           <Image
             alt="Video Thumbnail"
             src={thumbnail}
-            classNames={{
-              wrapper: "w-full h-full",
-              img: "object-cover w-full h-full transform transition-transform group-hover:scale-105",
-            }}
+            width={500}
+            height={500}
+            className="w-full h-full object-contain"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
