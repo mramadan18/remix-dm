@@ -70,7 +70,7 @@ function resolveAria2Binary(): string | null {
   }
 
   console.warn(
-    `[Aria2Manager] aria2 binary not found in any node_modules location`
+    `[Aria2Manager] aria2 binary not found in any node_modules location`,
   );
 
   // Fallback: check if aria2c is in PATH
@@ -209,6 +209,7 @@ export async function startAria2Daemon(): Promise<void> {
 
     // DNS
     "--async-dns=true", // Use asynchronous DNS resolution
+    "--disable-ipv6=true", // Force IPv4 globally to avoid unreachable network errors
   ];
 
   return new Promise<void>((resolve, reject) => {
@@ -224,7 +225,7 @@ export async function startAria2Daemon(): Promise<void> {
         // Setting high priority prevents the OS from "sleeping" the process
         exec(
           `wmic process where name="aria2c.exe" CALL setpriority "high priority"`,
-          { stdio: "ignore" }
+          { stdio: "ignore" },
         );
       }
 
@@ -236,7 +237,7 @@ export async function startAria2Daemon(): Promise<void> {
 
       aria2Process.on("exit", (code, signal) => {
         console.log(
-          `[Aria2Manager] aria2 exited with code ${code}, signal ${signal}`
+          `[Aria2Manager] aria2 exited with code ${code}, signal ${signal}`,
         );
         aria2Process = null;
       });
@@ -307,7 +308,7 @@ export async function restartAria2Daemon(): Promise<void> {
     const busy = await isPortBusy(ARIA2_RPC_PORT);
     if (!busy) break;
     console.warn(
-      `[Aria2Manager] Port ${ARIA2_RPC_PORT} still busy, waiting more...`
+      `[Aria2Manager] Port ${ARIA2_RPC_PORT} still busy, waiting more...`,
     );
     await new Promise((r) => setTimeout(r, 2000));
     retries--;

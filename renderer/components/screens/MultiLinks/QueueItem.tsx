@@ -65,6 +65,8 @@ export const QueueItem = ({
     return <FileCode size={20} />;
   };
 
+  console.log({ url, title, size, type, status, error });
+
   return (
     <Card className="w-full flex-none animate-appearance-in">
       <CardBody className="flex flex-row items-center gap-4 p-3">
@@ -97,8 +99,8 @@ export const QueueItem = ({
               {type === "video"
                 ? "Video link"
                 : type === "direct"
-                ? "Direct file"
-                : ""}
+                  ? "Direct file"
+                  : ""}
             </span>
           </div>
         </div>

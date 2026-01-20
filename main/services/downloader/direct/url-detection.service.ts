@@ -21,6 +21,7 @@ export interface LinkTypeResult {
   contentLength?: number;
   filename?: string;
   reason: string;
+  suggestedUserAgent?: string;
 }
 
 /**
@@ -405,11 +406,105 @@ function isWebPageContentType(contentType: string | undefined): boolean {
   );
 }
 
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const GENERIC_USER_AGENT = "curl/7.68.0"; // Using curl UA as it's widely accepted by file hosters
+
+/**
+ * Get content length using Range request (fallback when HEAD doesn't return content-length)
+ * Uses GET with Range: bytes=0-0 to get Content-Range header which contains total size
+ */
+async function getContentLengthViaRange(
+  url: string,
+  userAgent: string,
+  maxRedirects: number = 5,
+): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    try {
+      const urlObj = new URL(url);
+      const protocol = urlObj.protocol === "https:" ? https : http;
+
+      const options = {
+        method: "GET",
+        hostname: urlObj.hostname,
+        port: urlObj.port || (urlObj.protocol === "https:" ? 443 : 80),
+        path: urlObj.pathname + urlObj.search,
+        headers: {
+          "User-Agent": userAgent,
+          Accept: "*/*",
+          Range: "bytes=0-0", // Request only the first byte
+          Referer: url,
+        },
+        timeout: 5000,
+        rejectUnauthorized: false,
+      };
+
+      const req = protocol.request(options, async (res) => {
+        try {
+          // Handle redirects
+          if (
+            res.statusCode &&
+            res.statusCode >= 300 &&
+            res.statusCode < 400 &&
+            res.headers.location
+          ) {
+            if (maxRedirects <= 0) {
+              resolve(undefined);
+              return;
+            }
+            const redirectUrl = new URL(res.headers.location, url).toString();
+            res.destroy();
+            getContentLengthViaRange(redirectUrl, userAgent, maxRedirects - 1)
+              .then(resolve)
+              .catch(() => resolve(undefined));
+            return;
+          }
+
+          // Abort the download immediately - we just need headers
+          res.destroy();
+
+          // Check Content-Range header: "bytes 0-0/TOTAL_SIZE"
+          const contentRange = res.headers["content-range"];
+          if (contentRange) {
+            const match = contentRange.match(/bytes\s+\d+-\d+\/(\d+)/);
+            if (match) {
+              resolve(parseInt(match[1], 10));
+              return;
+            }
+          }
+
+          // If 200 response (server doesn't support range), try content-length
+          if (res.statusCode === 200 && res.headers["content-length"]) {
+            resolve(parseInt(res.headers["content-length"], 10));
+            return;
+          }
+
+          resolve(undefined);
+        } catch {
+          resolve(undefined);
+        }
+      });
+
+      req.on("error", () => resolve(undefined));
+      req.on("timeout", () => {
+        req.destroy();
+        resolve(undefined);
+      });
+
+      req.end();
+    } catch {
+      resolve(undefined);
+    }
+  });
+}
+
 /**
  * Perform HEAD request to detect link type
+ * Falls back to Range request if HEAD doesn't return content-length
  */
 async function performHeadRequest(
   url: string,
+  userAgent: string,
   maxRedirects: number = 5,
 ): Promise<{
   contentType?: string;
@@ -427,8 +522,7 @@ async function performHeadRequest(
       port: urlObj.port || (urlObj.protocol === "https:" ? 443 : 80),
       path: urlObj.pathname + urlObj.search,
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": userAgent,
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
@@ -472,7 +566,7 @@ async function performHeadRequest(
             return;
           }
 
-          performHeadRequest(redirectUrl, maxRedirects - 1)
+          performHeadRequest(redirectUrl, userAgent, maxRedirects - 1)
             .then(resolve)
             .catch(reject);
           return;
@@ -483,11 +577,22 @@ async function performHeadRequest(
           return;
         }
 
+        let contentLength = res.headers["content-length"]
+          ? parseInt(res.headers["content-length"], 10)
+          : undefined;
+
+        // Fallback: If HEAD didn't return content-length, try Range request
+        if (contentLength === undefined) {
+          try {
+            contentLength = await getContentLengthViaRange(url, userAgent);
+          } catch {
+            // Silently ignore - contentLength will remain undefined
+          }
+        }
+
         resolve({
           contentType: res.headers["content-type"],
-          contentLength: res.headers["content-length"]
-            ? parseInt(res.headers["content-length"], 10)
-            : undefined,
+          contentLength,
           contentDisposition: res.headers["content-disposition"],
           finalUrl: url,
         });
@@ -577,17 +682,34 @@ export async function detectLinkType(
     // 2. Try HEAD request for accurate detection
     try {
       let headResult;
+      let usedUA = BROWSER_USER_AGENT;
+
       try {
-        headResult = await performHeadRequest(url);
+        // First try with Browser User-Agent (detects most sites correctly)
+        headResult = await performHeadRequest(url, BROWSER_USER_AGENT);
       } catch (err) {
-        // Retry logic for timeout
+        // Retry logic
+        const isForbidden =
+          err instanceof Error &&
+          (err.message.includes("HTTP 403") ||
+            err.message.includes("HTTP 400") ||
+            err.message.includes("HTTP 401")); // Some CDNs return 400/401/403 for browser UA on direct links
+
+        // If Timeout or Forbidden, retry
         if (
           err instanceof Error &&
           (err.message === "Request timeout" ||
-            err.message.includes("ETIMEDOUT"))
+            err.message.includes("ETIMEDOUT") ||
+            isForbidden)
         ) {
-          console.log("[URLDetection] Timeout, retrying HEAD request...");
-          headResult = await performHeadRequest(url);
+          const retryUA = isForbidden ? GENERIC_USER_AGENT : BROWSER_USER_AGENT;
+          console.log(
+            `[URLDetection] ${err.message}, retrying HEAD request with ${
+              isForbidden ? "Generic" : "Browser"
+            } UA...`,
+          );
+          headResult = await performHeadRequest(url, retryUA);
+          usedUA = retryUA;
         } else {
           throw err;
         }
@@ -611,6 +733,7 @@ export async function detectLinkType(
             isDirect: false,
             contentType: headResult.contentType,
             reason: "Content-Type indicates web page",
+            suggestedUserAgent: usedUA,
           };
         }
 
@@ -623,6 +746,7 @@ export async function detectLinkType(
               extractFilenameFromHeader(headResult.contentDisposition) ||
               getFilenameFromUrl(url),
             reason: "Content-Type indicates direct download",
+            suggestedUserAgent: usedUA,
           };
         }
       }
@@ -639,6 +763,7 @@ export async function detectLinkType(
             contentLength: headResult.contentLength,
             filename,
             reason: "Content-Disposition header indicates file download",
+            suggestedUserAgent: usedUA,
           };
         }
       }

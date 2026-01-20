@@ -920,6 +920,33 @@ class DirectDownloadService extends EventEmitter {
               `[DirectDownload] Found existing active task (${d.status}) for:`,
               targetFilename || options.url,
             );
+
+            // Auto-fix: Update User-Agent if a better one was detected
+            if (linkInfo.suggestedUserAgent) {
+              const gid = this.getGidByDownloadId(id);
+              if (gid) {
+                const newHeader = [
+                  `User-Agent: ${linkInfo.suggestedUserAgent}`,
+                  `Referer: ${options.url}`,
+                ];
+                this.sendRequest("aria2.changeOption", [
+                  gid,
+                  { header: newHeader },
+                ])
+                  .then(() =>
+                    console.log(
+                      `[DirectDownload] Updated options for task ${id} with suggested UA`,
+                    ),
+                  )
+                  .catch((err) =>
+                    console.warn(
+                      `[DirectDownload] Failed to update options for ${id}:`,
+                      err,
+                    ),
+                  );
+              }
+            }
+
             return { success: true, data: d };
           }
 
@@ -976,6 +1003,11 @@ class DirectDownloadService extends EventEmitter {
       }
 
       // Build aria2 options - Optimized for large files and reliability
+      // Use suggested UA from detection if available (fixes 403 on some hosts)
+      const userAgent =
+        linkInfo.suggestedUserAgent ||
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36";
+
       const aria2Options: Record<string, string | string[]> = {
         dir: outputDir,
         "max-connection-per-server": "4",
@@ -990,17 +1022,14 @@ class DirectDownloadService extends EventEmitter {
         "retry-wait": "5",
         "disk-cache": "64M", // Reduces disk I/O pressure and engine hangs
         "stream-piece-selector": "geom", // Smarter piece selection, less fragmentation
-        header: [
-          "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36",
-          `Referer: ${options.url}`,
-        ],
+        "disable-ipv6": "true", // Force IPv4 to avoid unreachable network errors
+        header: [`User-Agent: ${userAgent}`, `Referer: ${options.url}`],
         "check-certificate": "false",
       };
 
       if (finalFilename) {
         aria2Options.out = sanitizeFilename(finalFilename);
       }
-
       // Ensure URL is properly encoded for aria2
       let finalUrl = options.url;
       try {

@@ -1,23 +1,18 @@
 import path from "path";
 import { app } from "electron";
 import serve from "electron-serve";
-import { createWindow } from "./helpers";
-import { registerWindowIpc } from "./ipc/window-ipc";
-import { registerShellIpc } from "./ipc/shell-ipc";
-import { initializeDownloadIpc } from "./ipc/download-ipc";
-import { initializeHistoryIpc } from "./ipc/history-ipc";
-import { initializeSettingsIpc } from "./ipc/settings-ipc";
-import { registerAppIpc } from "./ipc/app-ipc";
-import { startHistoryRecording } from "./services/history.service";
-import { UpdateService } from "./services/update.service";
 import {
-  getFfmpegPath,
-  isFfmpegAvailable,
-} from "./services/utils/binary-manager";
-import {
+  createWindow,
   registerProtocolClient,
   handleProtocolUrl,
-} from "./helpers/protocol-handler";
+} from "./helpers";
+import { registerIpcHandlers } from "./ipc";
+import {
+  startHistoryRecording,
+  UpdateService,
+  getFfmpegPath,
+  isFfmpegAvailable,
+} from "./services";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -106,12 +101,7 @@ function initializeServices(window: any) {
   UpdateService.getInstance().init(window);
 
   // Register IPC handlers
-  registerWindowIpc(window);
-  registerShellIpc();
-  registerAppIpc();
-  initializeDownloadIpc();
-  initializeHistoryIpc();
-  initializeSettingsIpc();
+  registerIpcHandlers(window);
 
   // Start background services
   startHistoryRecording();
