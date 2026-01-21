@@ -9,6 +9,9 @@ files:
     filter:
       - package.json
       - app
+asarUnpack:
+  - "node_modules/@naria2/**"
+  - "node_modules/@ffmpeg-installer/**"
 protocols:
   name: RemixDM
   schemes: [remixdm]

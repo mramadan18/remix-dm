@@ -15,7 +15,21 @@ let ffmpegPath: string | null = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ffmpeg = require("@ffmpeg-installer/ffmpeg");
-  ffmpegPath = ffmpeg.path;
+  let resolvedPath = ffmpeg.path;
+
+  // For packaged apps, we MUST use the unpacked path for spawning
+  if (
+    resolvedPath &&
+    resolvedPath.includes("app.asar") &&
+    !resolvedPath.includes("app.asar.unpacked")
+  ) {
+    const unpackedPath = resolvedPath.replace("app.asar", "app.asar.unpacked");
+    if (fs.existsSync(unpackedPath)) {
+      resolvedPath = unpackedPath;
+    }
+  }
+
+  ffmpegPath = resolvedPath;
   console.log("[BinaryManager] ffmpeg path:", ffmpegPath);
 } catch (error) {
   console.warn("[BinaryManager] ffmpeg-installer not available:", error);

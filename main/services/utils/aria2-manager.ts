@@ -47,8 +47,12 @@ function resolveAria2Binary(): string | null {
   const possibleBasePaths = [
     // Development: relative to the app directory
     path.join(process.cwd(), "node_modules"),
-    // Production: packaged app
+    // Production: packaged app (check both asar and unpacked)
     path.join(app.getAppPath(), "node_modules"),
+    path.join(
+      app.getAppPath().replace("app.asar", "app.asar.unpacked"),
+      "node_modules",
+    ),
     // Alternative: relative to __dirname
     path.join(__dirname, "..", "..", "node_modules"),
     path.join(__dirname, "..", "node_modules"),
@@ -61,8 +65,25 @@ function resolveAria2Binary(): string | null {
 
     try {
       if (fs.existsSync(binaryPath)) {
-        console.log(`[Aria2Manager] Found aria2 binary at: ${binaryPath}`);
-        return binaryPath;
+        // For packaged apps, we MUST use the unpacked path for spawning
+        const isAsar =
+          binaryPath.includes("app.asar") &&
+          !binaryPath.includes("app.asar.unpacked");
+        const finalPath = isAsar
+          ? binaryPath.replace("app.asar", "app.asar.unpacked")
+          : binaryPath;
+
+        if (fs.existsSync(finalPath)) {
+          console.log(`[Aria2Manager] Found aria2 binary at: ${finalPath}`);
+          return finalPath;
+        }
+
+        if (fs.existsSync(binaryPath)) {
+          console.log(
+            `[Aria2Manager] Found aria2 binary (in asar) at: ${binaryPath}`,
+          );
+          return binaryPath;
+        }
       }
     } catch {
       // Continue to next path
