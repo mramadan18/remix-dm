@@ -7,18 +7,13 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/react";
-import {
-  File,
-  FileVideo,
-  FolderOpen,
-  MoreVertical,
-  Music,
-  Play,
-  // RotateCcw,
-  Trash2,
-} from "lucide-react";
+import { FolderOpen, MoreVertical, Play, Trash2 } from "lucide-react";
 import { HistoryRecord } from "../../../types/history";
 import { formatBytes } from "../../../utils/formatters";
+import {
+  getFileIconProps,
+  getFileTypeFromExtension,
+} from "../../../utils/file-icons";
 
 interface HistoryItemProps {
   item: HistoryRecord;
@@ -50,15 +45,10 @@ export const HistoryItem = ({
     }
   };
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case "video":
-        return <FileVideo size={20} className="text-primary" />;
-      case "audio":
-        return <Music size={20} className="text-secondary" />;
-      default:
-        return <File size={20} className="text-default-500" />;
-    }
+  const getIcon = (filename: string) => {
+    const type = getFileTypeFromExtension(filename);
+    const { Icon, className } = getFileIconProps(type);
+    return <Icon size={20} className={className} />;
   };
 
   return (
@@ -84,7 +74,7 @@ export const HistoryItem = ({
               </div>
             ) : (
               <div className="w-12 h-12 rounded-lg bg-default-100 flex items-center justify-center group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                {getIcon(item.type)}
+                {getIcon(item.filename)}
               </div>
             )}
           </div>

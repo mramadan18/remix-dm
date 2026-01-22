@@ -486,7 +486,9 @@ export function useVideoInfo() {
     const result = await extractVideoInfo(url);
 
     if (result.success && result.data) {
-      setVideoInfo(result.data);
+      // Add type for video content
+      const videoData = { ...result.data, type: "video" as const };
+      setVideoInfo(videoData);
     } else {
       setError(result.error || "Failed to extract video info");
     }

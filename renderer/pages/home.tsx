@@ -15,6 +15,7 @@ const HomePage = () => {
     selectedFormat,
     isDownloading,
     downloadStatus,
+    isDirectDownload,
 
     // Video info state
     videoInfo,
@@ -81,6 +82,7 @@ const HomePage = () => {
             selectedQuality={selectedQuality}
             selectedFormat={selectedFormat}
             isDownloading={isDownloading}
+            isDirectDownload={isDirectDownload}
             videoInfo={videoInfo}
             currentFormats={currentFormats}
             availableQualities={availableQualities}

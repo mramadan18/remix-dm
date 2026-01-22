@@ -49,7 +49,7 @@ export const HistoryList = ({
 
     // Remove empty groups
     return Object.fromEntries(
-      Object.entries(groups).filter(([_, items]) => items.length > 0)
+      Object.entries(groups).filter(([_, items]) => items.length > 0),
     );
   }, [history]);
 
@@ -61,7 +61,6 @@ export const HistoryList = ({
             <Clock size={16} />
             {group}
           </h2>
-
           <div className="grid grid-cols-1 gap-2">
             {items.map((item) => (
               <HistoryItem

@@ -10,6 +10,7 @@ interface VideoInfoCardProps {
   selectedQuality: string;
   selectedFormat: string;
   isDownloading: boolean;
+  isDirectDownload: boolean;
 
   // Video info
   videoInfo: any; // We'll type this properly if possible, or use the inferred type
@@ -29,6 +30,7 @@ export const VideoInfoCard = ({
   selectedQuality,
   selectedFormat,
   isDownloading,
+  isDirectDownload,
   videoInfo,
   currentFormats,
   availableQualities,
@@ -50,19 +52,20 @@ export const VideoInfoCard = ({
             {/* Thumbnail Section */}
             <VideoThumbnail {...videoInfo} />
 
-            {/* Info & Options Section */}
             <div className="md:col-span-2 flex flex-col justify-between py-2">
               <VideoMetadata {...videoInfo} />
 
-              {/* Quality & Format Selectors */}
-              <QualityFormatSelectors
-                selectedQuality={selectedQuality}
-                selectedFormat={selectedFormat}
-                currentFormats={currentFormats}
-                availableQualities={availableQualities}
-                onQualityChange={onQualityChange}
-                onFormatChange={onFormatChange}
-              />
+              {/* Quality & Format Selectors - Hide for direct downloads */}
+              {!isDirectDownload && (
+                <QualityFormatSelectors
+                  selectedQuality={selectedQuality}
+                  selectedFormat={selectedFormat}
+                  currentFormats={currentFormats}
+                  availableQualities={availableQualities}
+                  onQualityChange={onQualityChange}
+                  onFormatChange={onFormatChange}
+                />
+              )}
 
               {/* Action Buttons */}
               <DownloadActions

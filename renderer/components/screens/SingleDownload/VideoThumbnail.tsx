@@ -1,13 +1,15 @@
-import { FileVideo, User } from "lucide-react";
+import { User } from "lucide-react";
 import { formatDuration } from "../../../utils/formatters";
 import { VideoInfo } from "../../../types/download";
 import Image from "next/image";
+import { getFileIconProps } from "../../../utils/file-icons";
 
 export const VideoThumbnail = ({
   thumbnail,
   duration,
   isLive,
   uploader,
+  type,
 }: VideoInfo) => {
   return (
     <div className="md:col-span-1">
@@ -22,7 +24,10 @@ export const VideoThumbnail = ({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <FileVideo size={48} className="text-primary" />
+            {(() => {
+              const { Icon, className } = getFileIconProps(type);
+              return <Icon size={48} className={className} />;
+            })()}
           </div>
         )}
         {duration && (

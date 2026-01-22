@@ -1,16 +1,11 @@
-import { Clock, HardDrive, Globe, Eye } from "lucide-react";
-import {
-  formatDuration,
-  formatViewCount,
-  formatBytes,
-} from "../../../utils/formatters";
+import { Clock, Globe, Eye } from "lucide-react";
+import { formatDuration, formatViewCount } from "../../../utils/formatters";
 import { VideoInfo } from "../../../types/download";
 
 export const VideoMetadata = ({
   title,
   duration,
   viewCount,
-  formats,
   extractor,
 }: VideoInfo) => {
   return (

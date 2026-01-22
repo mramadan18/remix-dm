@@ -15,6 +15,7 @@ import {
 } from "../utils/formatters";
 import { ApiResponse } from "../types/download";
 import { useRouter } from "next/router";
+import { getFileTypeFromExtension } from "../utils/file-icons";
 
 export interface UseSingleDownloadReturn {
   // State
@@ -23,6 +24,7 @@ export interface UseSingleDownloadReturn {
   selectedFormat: string;
   isDownloading: boolean;
   downloadStatus: string | null;
+  isDirectDownload: boolean;
 
   // Video info state
   videoInfo: ReturnType<typeof useVideoInfo>["videoInfo"];
@@ -172,13 +174,16 @@ export function useSingleDownload(): UseSingleDownloadReturn {
         const data = linkType.data;
 
         // Mock video info for the UI to display file information
+        const filename = data.filename || trimmedUrl.split("/").pop() || "Direct Download";
+        const fileType = getFileTypeFromExtension(filename);
+
         const mockedInfo: any = {
           id: "direct-" + Date.now(),
-          title:
-            data.filename || trimmedUrl.split("/").pop() || "Direct Download",
+          title: filename,
           uploader: new URL(trimmedUrl).hostname,
           thumbnail: null,
           formats: [],
+          type: fileType,
           qualityOptions: [
             {
               key: "original",
@@ -294,6 +299,7 @@ export function useSingleDownload(): UseSingleDownloadReturn {
     selectedFormat,
     isDownloading,
     downloadStatus,
+    isDirectDownload,
 
     // Video info state
     videoInfo,

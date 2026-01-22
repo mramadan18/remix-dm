@@ -84,6 +84,7 @@ export interface VideoInfo {
   isPlaylist: boolean;
   qualityOptions?: QualityOption[];
   playlist?: PlaylistInfo;
+  type?: "video" | "audio" | "file" | "compressed" | "document" | "program";
 }
 
 /**

@@ -6,7 +6,6 @@ import {
   Download,
   History,
   Settings,
-  HardDrive,
   Home,
 } from "lucide-react";
 import { APP_CONFIG } from "../../config/app-config";
