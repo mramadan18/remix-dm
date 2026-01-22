@@ -1,8 +1,17 @@
 import { useState, useEffect } from "react";
-import { Card, CardBody, Button } from "@heroui/react";
-import { Download, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
+import { Card, CardBody, Button, Chip } from "@heroui/react";
+import {
+  Download,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  ShieldCheck,
+  Rocket,
+} from "lucide-react";
+import { formatBytes } from "../../../utils/formatters";
 import { APP_CONFIG } from "../../../config/app-config";
 import { useUpdate } from "../../../hooks/useUpdate";
+import Image from "next/image";
 
 export const AboutSettings = () => {
   const { status, progress, checkForUpdate, installUpdate } = useUpdate();
@@ -15,13 +24,13 @@ export const AboutSettings = () => {
   const getStatusIcon = () => {
     switch (status.status) {
       case "checking":
-        return <RefreshCw className="w-4 h-4 animate-spin" />;
+        return <RefreshCw className="w-4 h-4 animate-spin text-brand-cyan" />;
       case "available":
-        return <Download className="w-4 h-4" />;
+        return <Download className="w-4 h-4 text-white" />;
       case "up-to-date":
         return <CheckCircle2 className="w-4 h-4 text-success" />;
       case "downloaded":
-        return <CheckCircle2 className="w-4 h-4 text-success" />;
+        return <RefreshCw className="w-4 h-4 text-white" />;
       case "error":
         return <AlertCircle className="w-4 h-4 text-danger" />;
       default:
@@ -29,109 +38,152 @@ export const AboutSettings = () => {
     }
   };
 
-  const getStatusColor = () => {
-    switch (status.status) {
-      case "available":
-        return "primary";
-      case "downloaded":
-        return "success";
-      case "error":
-        return "danger";
-      default:
-        return "secondary";
-    }
-  };
-
   return (
-    <Card className="shadow-xl bg-linear-to-br from-brand-cyan/10 to-brand-purple/10 border-brand-cyan/20">
-      <CardBody className="p-8 flex flex-col items-center text-center">
-        <div className="w-16 h-16 bg-linear-to-br from-brand-cyan to-brand-purple rounded-2xl flex items-center justify-center shadow-lg shadow-brand-cyan/20 mb-4">
-          <Download className="text-white w-8 h-8" />
-        </div>
-        <h2 className="text-2xl font-black bg-linear-to-r from-brand-cyan to-brand-purple bg-clip-text text-transparent">
-          {APP_CONFIG.name}
-        </h2>
-        <p className="text-xs font-bold text-primary/60 tracking-widest uppercase mb-4">
-          Version {mounted ? APP_CONFIG.version : "..."}{" "}
-          {mounted && !APP_CONFIG.isBeta && "(Stable)"}
-        </p>
-        <p className="text-default-500 max-w-sm mb-6">
-          {APP_CONFIG.description}
-        </p>
-        <div className="flex flex-col gap-4 items-center">
-          <div className="flex gap-4">
-            <Button
-              size="sm"
-              variant="flat"
-              color="secondary"
-              onPress={() => window.open(APP_CONFIG.links.website, "_blank")}
-            >
-              Website
-            </Button>
+    <Card className="shadow-lg border-2 border-brand-cyan/20 bg-linear-to-r from-brand-cyan/5 via-transparent to-brand-purple/5">
+      <CardBody className="p-6">
+        <div className="flex flex-col md:flex-row items-center gap-8">
+          {/* Brand/Logo Section */}
+          <div className="flex flex-col items-center shrink-0">
+            <div className="relative group">
+              <div className="absolute -inset-1 bg-linear-to-r from-brand-cyan to-brand-purple rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-500"></div>
+              <div className="relative w-20 h-20 bg-background/50 backdrop-blur-sm rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden">
+                <Image
+                  src="/images/logo.png"
+                  alt="Logo"
+                  width={60}
+                  height={60}
+                  className="object-contain"
+                />
+              </div>
+            </div>
+          </div>
 
-            {status.status === "downloaded" ? (
+          {/* Info Section */}
+          <div className="flex-1 flex flex-col gap-2 text-center md:text-left">
+            <div className="flex flex-wrap items-center gap-2 justify-center md:justify-start">
+              <h2 className="text-2xl font-black bg-linear-to-r from-brand-cyan to-brand-purple bg-clip-text text-transparent">
+                {APP_CONFIG.name}
+              </h2>
+              <Chip
+                size="sm"
+                variant="flat"
+                className="bg-primary/10 text-primary border-primary/20 font-bold"
+              >
+                v{mounted ? APP_CONFIG.version : "..."}
+              </Chip>
+              {status.status === "up-to-date" && (
+                <Chip
+                  size="sm"
+                  color="success"
+                  variant="flat"
+                  startContent={<ShieldCheck size={14} />}
+                >
+                  Secure & Up to date
+                </Chip>
+              )}
+            </div>
+            <p className="text-default-500 text-sm max-w-xl">
+              {APP_CONFIG.description}
+            </p>
+
+            <div className="flex flex-wrap gap-4 mt-2 justify-center md:justify-start">
               <Button
                 size="sm"
-                variant="shadow"
-                color="success"
-                onPress={installUpdate}
-                startContent={<RefreshCw className="w-4 h-4" />}
+                variant="light"
+                className="text-default-500 hover:text-primary font-medium"
+                onPress={() => window.open(APP_CONFIG.links.website, "_blank")}
               >
-                Restart to Update
+                Visit Website
+              </Button>
+              <div className="w-1 h-1 rounded-full bg-default-300 mt-3 hidden md:block" />
+              <Button
+                size="sm"
+                variant="light"
+                className="text-default-500 hover:text-primary font-medium"
+                onPress={() => window.open(APP_CONFIG.links.github, "_blank")}
+              >
+                Source Code
+              </Button>
+            </div>
+          </div>
+
+          {/* Update Action Section */}
+          <div className="shrink-0 flex flex-col items-center md:items-end gap-3 min-w-[200px]">
+            {status.status === "downloaded" ? (
+              <Button
+                className="w-full font-bold bg-linear-to-r from-success to-emerald-600 text-white shadow-lg shadow-success/20 py-6"
+                onPress={installUpdate}
+                startContent={<RefreshCw className="w-5 h-5" />}
+              >
+                Restart & Update
+              </Button>
+            ) : status.status === "available" ? (
+              <Button
+                className="w-full font-bold bg-linear-to-r from-brand-cyan to-brand-purple text-white shadow-lg shadow-brand-cyan/20 py-6"
+                onPress={checkForUpdate}
+                startContent={<Rocket className="w-5 h-5 shadow-sm" />}
+              >
+                Get Update Now
               </Button>
             ) : (
               <Button
-                size="sm"
                 variant="flat"
-                color={getStatusColor()}
+                className="w-full font-bold border-brand-cyan/20 px-8 py-6"
+                color="secondary"
                 onPress={checkForUpdate}
                 isLoading={status.status === "checking"}
                 startContent={
                   !status.status.includes("checking") && getStatusIcon()
                 }
               >
-                {status.status === "available"
-                  ? "Download Update"
-                  : status.status === "checking"
-                    ? "Checking..."
-                    : status.status === "error"
-                      ? "Retry Check"
-                      : "Check Updates"}
+                {status.status === "checking"
+                  ? "Checking..."
+                  : status.status === "error"
+                    ? "Retry"
+                    : "Check Updates"}
               </Button>
             )}
-          </div>
 
-          {status.message && (
-            <div className="flex flex-col items-center">
+            {status.message && (
               <p
-                className={`text-sm ${
-                  status.status === "error" ? "text-danger" : "text-default-500"
+                className={`text-[11px] font-medium text-center md:text-right ${
+                  status.status === "error" ? "text-danger" : "text-default-400"
                 }`}
               >
                 {status.message}
               </p>
-              {status.error && status.status === "error" && (
-                <p className="text-[10px] text-danger/60 mt-1 max-w-xs break-all">
-                  {status.error}
-                </p>
-              )}
-            </div>
-          )}
+            )}
 
-          {progress && status.status === "available" && (
-            <div className="w-full max-w-xs mt-2">
-              <div className="flex justify-between text-xs mb-1">
-                <span>Downloading...</span>
-                <span>{Math.round(progress.percent)}%</span>
+            {progress && status.status === "available" && (
+              <div className="w-full space-y-2 mt-1">
+                <div className="h-1.5 w-full bg-default-100 rounded-full overflow-hidden border border-white/5">
+                  <div
+                    className="h-full bg-linear-to-r from-brand-cyan to-brand-purple transition-all duration-300"
+                    style={{ width: `${progress.percent}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-[10px] font-bold text-default-400">
+                  <div className="flex flex-col md:flex-row md:items-center md:gap-2">
+                    <div className="flex gap-1">
+                      <span>Downloading...</span>
+                      {progress.total > 0 && (
+                        <span className="text-primary/70">
+                          ({formatBytes(progress.transferred)} /{" "}
+                          {formatBytes(progress.total)})
+                        </span>
+                      )}
+                    </div>
+                    {progress.bytesPerSecond > 0 && (
+                      <span className="text-brand-purple/70">
+                        • {formatBytes(progress.bytesPerSecond)}/s
+                      </span>
+                    )}
+                  </div>
+                  <span>{Math.round(progress.percent)}%</span>
+                </div>
               </div>
-              <div className="w-full bg-default-200 rounded-full h-1.5 overflow-hidden">
-                <div
-                  className="bg-brand-cyan h-full transition-all duration-300"
-                  style={{ width: `${progress.percent}%` }}
-                />
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </CardBody>
     </Card>

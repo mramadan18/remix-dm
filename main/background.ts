@@ -61,10 +61,10 @@ if (!gotTheLock) {
     await app.whenReady();
 
     mainWindow = createWindow("main", {
-      minWidth: 960,
-      minHeight: 600,
-      width: 1100,
-      height: 720,
+      minWidth: 700,
+      minHeight: 700,
+      width: 800,
+      height: 900,
       titleBarOverlay: true,
       frame: false,
       center: true,

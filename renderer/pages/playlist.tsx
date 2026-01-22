@@ -33,7 +33,7 @@ const PlaylistPage = () => {
   } = usePlaylistDownload();
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
+    <div className="w-full max-w-7xl mx-auto">
       <div className="flex flex-col gap-6 mb-2">
         <PlaylistHeader />
         <UrlInputCard

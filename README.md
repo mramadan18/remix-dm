@@ -1,55 +1,62 @@
-# 🌀 Remix DM - The Ultimate Media Downloader
+# 🌀 RemixDM — The Elite Media Downloader
 
 <p align="center">
-  <img src="renderer/public/images/logo.png" alt="Remix DM Logo" width="180">
+  <img src="renderer/public/images/logo.png" alt="Remix DM Logo" width="160">
 </p>
 
-> **Professional High-Speed Media Downloader** built with Electron, Next.js, yt-dlp and aria2.
+<p align="center">
+  <b>A professional-grade desktop application for lightning-fast media downloads.</b><br>
+  Built with Electron 34, Next.js 14, and powered by industry-leading open-source engines.
+</p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Version-1.0.0--beta.4-FF4B5C?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Electron-34.0.0-blue?style=for-the-badge&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/Next.js-14.2.4-black?style=for-the-badge&logo=next.js" alt="Next.js">
-  <img src="https://img.shields.io/badge/Tailwind_CSS-4.1.18-38B2AC?style=for-the-badge&logo=tailwind-css" alt="TailwindCSS">
-  <img src="https://img.shields.io/badge/yt--dlp-Latest-red?style=for-the-badge&logo=youtube" alt="yt-dlp">
-  <img src="https://img.shields.io/badge/aria2-Latest-8a2be2?style=for-the-badge" alt="aria2">
+  <img src="https://img.shields.io/badge/HeroUI-2.8.7-611FEE?style=for-the-badge&logo=nextui" alt="HeroUI">
 </p>
-
-**Remix DM** is a premium, high-performance desktop application designed to make downloading media from the internet as easy as a single click. Built with Electron, Next.js, and the power of `yt-dlp` & `aria2`, it supports thousands of websites with a beautiful, modern user interface.
 
 ---
 
-## ✨ Features
+## 🚀 Overview
 
-- 🚀 **Universal Support**: Download from YouTube, TikTok, Instagram, Twitter(X), Facebook, Vimeo, Twitch, Dailymotion, and 1000+ other sites.
-- 📊 **Real-time Progress**: Track download speed, ETA, and progress percentage with a smooth, live-updating UI.
-- 🎞️ **Quality Selection**: Choose your preferred quality from 360p up to 4K (if available).
-- 🎵 **Smart Audio**: Download high-quality audio directly (MP3/M4A/FLAC) with auto-organization into the `Audios` directory.
-- 📝 **Info Extraction**: See title, duration, uploader, and thumbnails before you even start the download.
-- 🎬 **Playlist/Channel**: Download entire playlists or channels from YouTube and Vimeo with a single click.
-- 🌀 **Multiple Links**: Add unlimited links to the queue and process them in bulk.
-- ⚡ **Concurrent Downloads**: Smart queue management for fast simultaneous downloads (User-configurable up to 5 files).
-- 🎛️ **Download Management**: Pause, resume, retry, or cancel downloads with full control.
-- 📚 **Smart History**: Auto-grouped by date (Today, Yesterday, etc.), real-time search, file existence checks, and direct file/folder access.
-- ⚙️ **Advanced Settings**:
-  - **Custom Download Paths**: Change the primary download directory.
-  - **Smart Organization**: Files are auto-categorized into `Videos`, `Audios`, `Programs`, etc.
-  - **Conflict Management**: Choose what happens when a file exists (Rename, Overwrite, or Skip).
-  - **Engine Status**: Real-time status monitor for `yt-dlp`, `Aria2`, and `FFmpeg`.
-- 💎 **Premium UI**: Dark-mode-first aesthetic with Glassmorphism effects and smooth Framer Motion animations.
-- 🔗 **Deep Linking**: Launch downloads directly from your browser with `remixdm://` links.
-- 🛠️ **Binary Management**: Automatically downloads and updates the latest `yt-dlp` and `aria2` engines in the background.
+**RemixDM** is a premium, high-performance media acquisition tool designed for those who demand speed, reliability, and aesthetics. By combining the raw power of `yt-dlp` and `aria2` with a stunning modern interface, RemixDM makes downloading 4K videos, massive file archives, and watermark-free social media content effortless.
+
+---
+
+## ✨ Key Features
+
+### 💎 Next-Gen User Interface
+
+- **Glassmorphism Sidebar**: A sleek, 100px slim sidebar with vertical icon layouts and dynamic glow effects.
+- **Modern Update Center**: A dedicated Software Update hub inspired by macOS/Windows update centers for both the app and its engines.
+- **Interactive Animations**: Powered by Framer Motion for buttery-smooth transitions and micro-interactions.
+- **Smart Dark Mode**: Optimized theme support using HeroUI for a premium low-light experience.
+
+### ⚡ Power-User Download Engine
+
+- **Multi-Protocol Support**: Seamlessly handle YouTube, TikTok (no watermark), Instagram, Twitter(X), Facebook, and 1000+ other sites.
+- **Aria2 Acceleration**: Multi-connection downloads for maximum bandwidth utilization.
+- **Smart User-Agent Spoofing**: Automatic detection and bypass for sites like Arabseed to ensure valid metadata and file sizes.
+- **Deep Linking**: Trigger downloads directly from your browser via `remixdm://` protocol handling.
+
+### 🛠️ Advanced Management
+
+- **Single Instance Performance**: The app intelligently prevents multiple instances, focusing your active window automatically.
+- **Auto-Binary Updates**: Never worry about broken downloaders; RemixDM automatically keeps `yt-dlp` and `aria2` up to date.
+- **Real-time Monitoring**: Detailed dashboard showing speed, ETA, engine statuses (FFmpeg/Aria2), and download progress.
+- **Configurable Queue**: Control concurrent downloads and manage your history with ease.
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Framework**: [Nextron](https://github.com/saltyshippo/nextron) (Next.js + Electron)
-- **UI Components**: [HeroUI](https://heroui.com/) (formerly NextUI)
-- **Styling**: Tailwind CSS v4
-- **Animations**: Framer Motion
-- **Icons**: Lucide React
-- **Core Engine**: [yt-dlp](https://github.com/yt-dlp/yt-dlp) & [aria2](https://github.com/aria2/aria2)
-- **Packaging**: [electron-builder](https://www.electron.build/)
+- **Framework**: [Nextron](https://github.com/saltyshippo/nextron) (Next.js 14 App Router + Electron)
+- **UI Architecture**: [HeroUI](https://heroui.com/) Components
+- **Styling**: Tailwind CSS v4 (with PostCSS)
+- **Animations**: Framer Motion 12
+- **Core Engines**: [yt-dlp](https://github.com/yt-dlp/yt-dlp), [aria2](https://github.com/aria2/aria2), and [FFmpeg](https://ffmpeg.org/).
+- **Persistence**: `electron-store` for settings and `nedb`-style persistence for download history.
 
 ---
 
@@ -57,52 +64,55 @@
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (LTS version recommended)
-- [NPM](https://www.npmjs.com/) or [Yarn](https://yarnpkg.com/)
+- [Node.js](https://nodejs.org/) (LTS recommended)
+- `npm` or `yarn`
 
-### Installation
+### Installation & Development
 
-1. Clone the repository:
-
+1. **Clone & Enter**:
    ```bash
    git clone https://github.com/mramadan18/remix-dm.git
    cd remix-dm
    ```
-
-2. Install dependencies:
-
+2. **Setup Dependencies**:
    ```bash
    npm install
    ```
-
-3. Run in development mode:
-
+3. **Launch Dev Environment**:
    ```bash
    npm run dev
    ```
 
-4. Build for production:
+### Production Build
 
-   ```bash
-   npm run build
-   ```
+Create a production-ready, optimized installer for your platform:
 
-   The built application will be available in the `dist/` directory.
+```bash
+npm run build
+```
+
+The resulting installer will be available in the `dist/` directory.
 
 ---
 
-## 📁 Project Structure
+## 📁 Repository Structure
 
-- `main/`: Electron main process files, IPC handlers, and backend services.
-  - `services/`: Download services, binary management, and persistent settings service.
-  - `ipc/`: Inter-process communication handlers for settings, history, and downloads.
-  - `helpers/`: Utility helpers including protocol handlers.
-- `renderer/`: Next.js frontend, components, hooks, and styles.
-  - `components/`: React components for UI screens and settings modules.
-  - `hooks/`: Custom React hooks for download management and centralized settings.
-  - `pages/`: Next.js pages and routing.
-- `app/`: Compiled Electron application files.
-- `resources/`: Application assets and icons.
+| Path              | Responsibility                                                  |
+| :---------------- | :-------------------------------------------------------------- |
+| `main/`           | Electron main process: IPC handlers, system services.           |
+| `main/services/`  | Core logic: Downloaders, update service, settings, and history. |
+| `renderer/`       | Next.js frontend: Pages, components, and global styles.         |
+| `renderer/hooks/` | Custom hooks for state management and IPC bridge logic.         |
+| `resources/`      | Branding assets, icons, and static binaries.                    |
+
+---
+
+## 🤝 Support & Feedback
+
+We're constantly improving RemixDM!
+
+- **In-App Support**: Use the built-in **Chatwoot widget** for direct communication.
+- **GitHub Issues**: Found a bug? [Open an issue](https://github.com/mramadan18/remix-dm/issues).
 
 ---
 
@@ -110,8 +120,6 @@
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
----
-
 <p align="center">
-  Developed with ❤️ by <b>Mahmoud Ramadan</b>
+  Crafted with ❤️ by <a href="https://github.com/mramadan18"><b>Mahmoud Ramadan</b></a>
 </p>

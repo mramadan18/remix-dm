@@ -38,7 +38,7 @@ const DownloadsPage = () => {
             d.status === DownloadStatus.PAUSED ||
             d.status === DownloadStatus.MERGING ||
             d.status === DownloadStatus.EXTRACTING ||
-            d.status === DownloadStatus.CONVERTING
+            d.status === DownloadStatus.CONVERTING,
         );
       case "completed":
         return completedDownloads;
@@ -69,19 +69,19 @@ const DownloadsPage = () => {
 
   const totalDownloaded = downloads.reduce(
     (acc, d) => acc + (d.progress.downloadedBytes || 0),
-    0
+    0,
   );
 
   if (isLoading) {
     return (
-      <div className="w-full max-w-4xl mx-auto flex items-center justify-center py-20">
+      <div className="w-full max-w-7xl mx-auto flex items-center justify-center py-20">
         <Spinner size="lg" color="primary" />
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
+    <div className="w-full max-w-7xl mx-auto">
       <DownloadsHeader
         total={downloads.length}
         active={activeDownloads.length}
@@ -98,7 +98,7 @@ const DownloadsPage = () => {
             (d) =>
               d.status === DownloadStatus.COMPLETED ||
               d.status === DownloadStatus.FAILED ||
-              d.status === DownloadStatus.CANCELLED
+              d.status === DownloadStatus.CANCELLED,
           )
         }
       />

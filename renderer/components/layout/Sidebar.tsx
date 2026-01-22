@@ -2,13 +2,13 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import {
   Layers,
-  Library,
+  ListMusic,
   Download,
   History,
   Settings,
   HardDrive,
+  Home,
 } from "lucide-react";
-import { Button } from "@heroui/react";
 import { APP_CONFIG } from "../../config/app-config";
 import Image from "next/image";
 
@@ -16,82 +16,77 @@ const Sidebar = () => {
   const router = useRouter();
 
   const menuItems = [
-    { label: "Quick Download", icon: Download, path: "/home" },
-    { label: "Playlist/Channel", icon: Library, path: "/playlist" },
-    { label: "Multiple Links", icon: Layers, path: "/multi" },
-    { label: "Downloads", icon: HardDrive, path: "/downloads" },
+    { label: "Quick DL", icon: Home, path: "/home" },
+    { label: "Playlist", icon: ListMusic, path: "/playlist" },
+    { label: "Multiple", icon: Layers, path: "/multi" },
+    { label: "Downloads", icon: Download, path: "/downloads" },
     { label: "History", icon: History, path: "/history" },
-    { label: "Settings", icon: Settings, path: "/settings" },
   ];
 
+  const settingsItem = { label: "Settings", icon: Settings, path: "/settings" };
+
+  const renderItem = (item: any) => {
+    const isActive = router.pathname === item.path;
+    const Icon = item.icon;
+
+    return (
+      <Link
+        key={item.path}
+        href={item.path}
+        className={`relative flex flex-col items-center justify-center gap-2 py-4 transition-all duration-300 group w-full`}
+        style={{
+          borderLeftColor: isActive ? "var(--brand-cyan)" : "transparent",
+          borderRightColor: isActive ? "var(--brand-purple)" : "transparent",
+        }}
+      >
+        <Icon
+          className={`w-7 h-7 transition-all duration-300 ${
+            isActive
+              ? "text-brand-cyan drop-shadow-[0_0_8px_rgba(0,242,255,0.5)]"
+              : "text-default-400 group-hover:text-default-600"
+          }`}
+        />
+        <span
+          className={`text-[11px] font-semibold tracking-wide transition-colors duration-300 ${
+            isActive
+              ? "text-white"
+              : "text-default-400 group-hover:text-default-600"
+          }`}
+        >
+          {item.label}
+        </span>
+      </Link>
+    );
+  };
+
   return (
-    <aside className="w-full h-full bg-background border-r border-divider flex flex-col justify-between py-6 px-4">
-      <div>
-        <div className="mb-10 flex items-center gap-3 px-2">
-          <div className="relative flex items-center justify-center">
-            <Image
-              src="/images/logo.png"
-              alt="Logo"
-              width={500}
-              height={500}
-              className="w-10 h-10"
-            />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-2xl font-black tracking-tighter leading-none bg-linear-to-r from-brand-cyan to-brand-purple bg-clip-text text-transparent">
-              {APP_CONFIG.name}
-            </span>
-            <span className="text-[10px] font-bold text-default-400 tracking-[0.2em] uppercase">
-              {APP_CONFIG.slogan}
-            </span>
-          </div>
+    <aside className="w-full h-full bg-background/60 backdrop-blur-xl border-r border-divider flex flex-col items-center overflow-hidden">
+      {/* Fixed Logo Section */}
+      <div className="py-6 flex flex-col items-center gap-2 group cursor-pointer shrink-0 w-full bg-background/10 backdrop-blur-md z-10 border-b border-divider/50">
+        <div className="relative p-1">
+          <div className="absolute -inset-1 bg-linear-to-r from-brand-cyan to-brand-purple rounded-full opacity-25"></div>
+          <Image
+            src="/images/logo.png"
+            alt="Logo"
+            width={40}
+            height={40}
+            className="relative w-10 h-10 object-contain"
+          />
         </div>
-
-        <nav className="flex flex-col gap-2">
-          {menuItems.map((item) => {
-            const isActive = router.pathname === item.path;
-            const Icon = item.icon;
-
-            return (
-              <Button
-                key={item.path}
-                as={Link}
-                href={item.path}
-                variant={isActive ? "flat" : "light"}
-                color={isActive ? "primary" : "default"}
-                className={`w-full justify-start gap-4 text-sm font-medium ${
-                  isActive ? "bg-primary/10" : "hover:bg-default-100"
-                }`}
-                size="lg"
-                startContent={
-                  <Icon
-                    className={`w-5 h-5 ${
-                      isActive ? "text-primary" : "text-default-500"
-                    }`}
-                  />
-                }
-              >
-                {item.label}
-              </Button>
-            );
-          })}
-        </nav>
+        <span className="text-xs font-black tracking-[0.15em] bg-linear-to-r from-brand-cyan to-brand-purple bg-clip-text text-transparent uppercase text-center leading-tight mt-2">
+          {APP_CONFIG.name}
+        </span>
       </div>
 
-      {/* <div className="px-2">
-        <div className="bg-default-50 p-4 rounded-xl border border-default-100">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-default-500">
-              STORAGE
-            </span>
-            <span className="text-xs text-primary">75%</span>
-          </div>
-          <div className="w-full h-1.5 bg-default-200 rounded-full overflow-hidden">
-            <div className="h-full w-3/4 bg-primary rounded-full" />
-          </div>
-          <p className="text-xs text-default-400 mt-2">126 GB used of 512 GB</p>
-        </div>
-      </div> */}
+      {/* Scrollable Navigation */}
+      <nav className="flex flex-col w-full overflow-y-auto overflow-x-hidden scrollbar-hide flex-1">
+        {menuItems.map(renderItem)}
+      </nav>
+
+      {/* Fixed Settings Section at Bottom */}
+      <div className="w-full shrink-0 border-t border-divider/50 bg-background/10 backdrop-blur-md">
+        {renderItem(settingsItem)}
+      </div>
     </aside>
   );
 };

@@ -167,7 +167,7 @@ export const UrlInputCard: React.FC<UrlInputCardProps> = ({
           onPress={onFetch}
           isLoading={isLoading}
           isDisabled={!url.trim() || !url.startsWith("http") || isLoading}
-          className="h-14 px-8 font-bold bg-linear-to-r from-brand-cyan to-brand-purple text-white shadow-lg shadow-brand-cyan/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
+          className="h-14 px-4 font-bold bg-linear-to-r from-brand-cyan to-brand-purple text-white shadow-lg shadow-brand-cyan/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
           endContent={!isLoading && <Download size={20} />}
         >
           {isLoading ? "Fetching..." : "Fetch List"}

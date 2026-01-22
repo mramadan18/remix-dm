@@ -4,7 +4,6 @@ import { VideoThumbnail } from "./VideoThumbnail";
 import { VideoMetadata } from "./VideoMetadata";
 import { QualityFormatSelectors } from "./QualityFormatSelectors";
 import { DownloadActions } from "./DownloadActions";
-import { useSingleDownload } from "../../../hooks/useSingleDownload";
 
 interface VideoInfoCardProps {
   // State

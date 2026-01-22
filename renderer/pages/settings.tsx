@@ -115,7 +115,7 @@ const SettingsPage = () => {
   }, [fetchBinaryInfo, fetchAria2Info, fetchFfmpegInfo]);
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
+    <div className="w-full max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-8">Settings</h1>
 
       <div className="flex flex-col gap-6">

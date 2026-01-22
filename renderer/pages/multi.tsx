@@ -17,7 +17,7 @@ const MultiPage = () => {
   } = useMultiDownload();
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
+    <div className="w-full max-w-7xl mx-auto">
       <MultiLinksHeader onClear={clearAll} />
 
       <div className="grid grid-cols-1 gap-6">
