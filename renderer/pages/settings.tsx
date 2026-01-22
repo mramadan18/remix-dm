@@ -127,7 +127,7 @@ const SettingsPage = () => {
           mounted={mounted}
         />
 
-        <NotificationSettings />
+        {/* <NotificationSettings /> */}
 
         <EngineSettings
           binaryInfo={binaryInfo}

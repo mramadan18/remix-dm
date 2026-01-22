@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { APP_CONFIG } from "../../config/app-config";
 import Image from "next/image";
+import { useActiveCount } from "../../store/downloads.store";
 
 const Sidebar = () => {
   const router = useRouter();
+  const activeCount = useActiveCount();
 
   const menuItems = [
     { label: "Quick DL", icon: Home, path: "/home" },
@@ -27,6 +29,7 @@ const Sidebar = () => {
   const renderItem = (item: any) => {
     const isActive = router.pathname === item.path;
     const Icon = item.icon;
+    const showBadge = item.path === "/downloads" && activeCount > 0;
 
     return (
       <Link
@@ -38,13 +41,20 @@ const Sidebar = () => {
           borderRightColor: isActive ? "var(--brand-purple)" : "transparent",
         }}
       >
-        <Icon
-          className={`w-7 h-7 transition-all duration-300 ${
-            isActive
-              ? "text-brand-cyan drop-shadow-[0_0_8px_rgba(0,242,255,0.5)]"
-              : "text-default-400 group-hover:text-default-600"
-          }`}
-        />
+        <div className="relative">
+          <Icon
+            className={`w-7 h-7 transition-all duration-300 ${
+              isActive
+                ? "text-brand-cyan drop-shadow-[0_0_8px_rgba(0,242,255,0.5)]"
+                : "text-default-400 group-hover:text-default-600"
+            }`}
+          />
+          {showBadge && (
+            <span className="absolute -top-2 -right-2 bg-brand-cyan text-black text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+              {activeCount}
+            </span>
+          )}
+        </div>
         <span
           className={`text-[11px] font-semibold tracking-wide transition-colors duration-300 ${
             isActive

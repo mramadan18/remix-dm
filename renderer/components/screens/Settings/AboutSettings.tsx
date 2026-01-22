@@ -108,7 +108,7 @@ export const AboutSettings = () => {
           </div>
 
           {/* Update Action Section */}
-          <div className="shrink-0 flex flex-col items-center md:items-end gap-3 min-w-[200px]">
+          <div className="shrink-0 flex flex-col items-center md:items-end gap-3 min-w-50">
             {status.status === "downloaded" ? (
               <Button
                 className="w-full font-bold bg-linear-to-r from-success to-emerald-600 text-white shadow-lg shadow-success/20 py-6"
