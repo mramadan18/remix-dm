@@ -1,10 +1,9 @@
 import { autoUpdater } from "electron-updater";
 import { ipcMain, BrowserWindow } from "electron";
-import log from "electron-log";
+import { updaterLog } from "../utils/logger";
 
 // Configure logging
-autoUpdater.logger = log;
-(autoUpdater.logger as any).transports.file.level = "info";
+autoUpdater.logger = updaterLog;
 
 export class UpdateService {
   private static instance: UpdateService;

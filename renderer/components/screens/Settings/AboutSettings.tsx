@@ -99,8 +99,15 @@ export const AboutSettings = () => {
               <Button
                 size="sm"
                 variant="light"
-                className="text-default-500 hover:text-primary font-medium"
-                onPress={() => window.open(APP_CONFIG.links.github, "_blank")}
+                className="text-default-500 hover:text-primary font-medium"                onPress={() => window.ipc.invoke("shell:open-logs", null)}
+              >
+                Open Logs
+              </Button>
+              <div className="w-1 h-1 rounded-full bg-default-300 mt-3 hidden md:block" />
+              <Button
+                size="sm"
+                variant="light"
+                className="text-default-500 hover:text-primary font-medium"                onPress={() => window.open(APP_CONFIG.links.github, "_blank")}
               >
                 Source Code
               </Button>

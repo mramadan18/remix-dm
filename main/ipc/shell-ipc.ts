@@ -1,6 +1,23 @@
-import { ipcMain, shell } from "electron";
+import { ipcMain, shell, app } from "electron";
+import path from "path";
 
 export function registerShellIpc(): void {
+  /**
+   * Open logs folder
+   */
+  ipcMain.handle("shell:open-logs", async () => {
+    try {
+      const logsPath = path.join(app.getPath("userData"), "logs");
+      const error = await shell.openPath(logsPath);
+      return { success: !error, error };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Unknown error",
+      };
+    }
+  });
+
   /**
    * Open a file or folder in the default application
    */

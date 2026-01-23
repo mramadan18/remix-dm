@@ -1,5 +1,6 @@
 import path from "path";
 import { app } from "electron";
+import log from "./utils/logger";
 import serve from "electron-serve";
 import {
   createWindow,
@@ -17,6 +18,9 @@ import {
 const isProd = process.env.NODE_ENV === "production";
 
 let mainWindow: any;
+
+// Override console with electron-log for the main process
+Object.assign(console, log.functions);
 
 // Register protocol handler
 registerProtocolClient();

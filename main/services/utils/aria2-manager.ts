@@ -17,84 +17,73 @@ function resolveAria2Binary(): string | null {
   const platform = process.platform;
   const arch = process.arch;
 
-  let packageDir: string;
-  let binaryName: string;
+  const mapping: Record<string, string> = {
+    "win32-x64": "@naria2/win32-x64",
+    "win32-ia32": "@naria2/win32-ia32",
+    "darwin-x64": "@naria2/darwin-x64",
+    "darwin-arm64": "@naria2/darwin-arm64",
+    "linux-x64": "@naria2/linux-x64",
+    "linux-arm64": "@naria2/linux-arm64",
+  };
 
-  if (platform === "win32" && arch === "x64") {
-    packageDir = "@naria2/win32-x64";
-    binaryName = "aria2c.exe";
-  } else if (platform === "win32" && arch === "ia32") {
-    packageDir = "@naria2/win32-ia32";
-    binaryName = "aria2c.exe";
-  } else if (platform === "darwin" && arch === "x64") {
-    packageDir = "@naria2/darwin-x64";
-    binaryName = "aria2c";
-  } else if (platform === "darwin" && arch === "arm64") {
-    packageDir = "@naria2/darwin-arm64";
-    binaryName = "aria2c";
-  } else if (platform === "linux" && arch === "x64") {
-    packageDir = "@naria2/linux-x64";
-    binaryName = "aria2c";
-  } else if (platform === "linux" && arch === "arm64") {
-    packageDir = "@naria2/linux-arm64";
-    binaryName = "aria2c";
-  } else {
-    console.warn(`[Aria2Manager] Unsupported platform: ${platform}-${arch}`);
-    return null;
+  const key = `${platform}-${arch}`;
+  const packageName = mapping[key];
+
+  if (!packageName) {
+    console.warn(`[Aria2Manager] Unsupported platform: ${key}`);
+    return "aria2c";
   }
 
-  // Try multiple possible paths for node_modules
-  const possibleBasePaths = [
-    // Development: relative to the app directory
-    path.join(process.cwd(), "node_modules"),
-    // Production: packaged app (check both asar and unpacked)
-    path.join(app.getAppPath(), "node_modules"),
-    path.join(
-      app.getAppPath().replace("app.asar", "app.asar.unpacked"),
-      "node_modules",
-    ),
-    // Alternative: relative to __dirname
-    path.join(__dirname, "..", "..", "node_modules"),
-    path.join(__dirname, "..", "node_modules"),
-    // Common install location for npm
-    path.join(process.cwd(), "..", "node_modules"),
+  const binaryName = platform === "win32" ? "aria2c.exe" : "aria2c";
+
+  // app.getAppPath() returns the path to the app directory or asar file
+  const appPath = app.getAppPath();
+  const unpackedPath = appPath.replace("app.asar", "app.asar.unpacked");
+
+  const possiblePaths = [
+    // 1. Production search: inside app.asar.unpacked (asarUnpack in electron-builder)
+    path.join(unpackedPath, "node_modules", packageName, binaryName),
+    path.join(unpackedPath, "node_modules", packageName, "bin", binaryName),
+
+    // 2. Development search: relative to current working directory
+    path.join(process.cwd(), "node_modules", packageName, binaryName),
+    path.join(process.cwd(), "node_modules", packageName, "bin", binaryName),
+
+    // 3. Fallback: try resolution via require
+    (() => {
+      try {
+        const pkgJson = require.resolve(`${packageName}/package.json`);
+        return path.join(path.dirname(pkgJson), binaryName);
+      } catch {
+        return "";
+      }
+    })(),
+    (() => {
+      try {
+        const pkgJson = require.resolve(`${packageName}/package.json`);
+        return path.join(path.dirname(pkgJson), "bin", binaryName);
+      } catch {
+        return "";
+      }
+    })(),
   ];
 
-  for (const basePath of possibleBasePaths) {
-    const binaryPath = path.join(basePath, packageDir, binaryName);
+  for (const p of possiblePaths) {
+    if (p && fs.existsSync(p)) {
+      // For packaged apps, we MUST use the unpacked path for spawning
+      const finalPath =
+        p.includes("app.asar") && !p.includes("app.asar.unpacked")
+          ? p.replace("app.asar", "app.asar.unpacked")
+          : p;
 
-    try {
-      if (fs.existsSync(binaryPath)) {
-        // For packaged apps, we MUST use the unpacked path for spawning
-        const isAsar =
-          binaryPath.includes("app.asar") &&
-          !binaryPath.includes("app.asar.unpacked");
-        const finalPath = isAsar
-          ? binaryPath.replace("app.asar", "app.asar.unpacked")
-          : binaryPath;
-
-        if (fs.existsSync(finalPath)) {
-          console.log(`[Aria2Manager] Found aria2 binary at: ${finalPath}`);
-          return finalPath;
-        }
-
-        if (fs.existsSync(binaryPath)) {
-          console.log(
-            `[Aria2Manager] Found aria2 binary (in asar) at: ${binaryPath}`,
-          );
-          return binaryPath;
-        }
+      if (fs.existsSync(finalPath)) {
+        console.log(`[Aria2Manager] Found aria2 binary at: ${finalPath}`);
+        return finalPath;
       }
-    } catch {
-      // Continue to next path
     }
   }
 
-  console.warn(
-    `[Aria2Manager] aria2 binary not found in any node_modules location`,
-  );
-
-  // Fallback: check if aria2c is in PATH
+  console.warn(`[Aria2Manager] aria2 binary not found, using PATH fallback`);
   return "aria2c";
 }
 
@@ -150,6 +139,20 @@ export function getAria2SessionPath(): string {
   }
 
   return path.join(sessionDir, "aria2.session");
+}
+
+/**
+ * Wait for the RPC port to be active
+ */
+async function waitForRPC(port: number, timeout = 5000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (await isPortBusy(port)) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`Timeout waiting for aria2 RPC on port ${port}`);
 }
 
 /**
@@ -268,15 +271,17 @@ export async function startAria2Daemon(): Promise<void> {
         console.error("[Aria2Manager] STDERR:", message.trim());
       });
 
-      // Wait a bit for aria2 to start
-      setTimeout(() => {
-        if (aria2Process && !aria2Process.killed) {
-          console.log("[Aria2Manager] aria2 daemon started successfully");
-          resolve();
-        } else {
-          reject(new Error("aria2 process terminated unexpectedly"));
-        }
-      }, 1000);
+      // Wait for the RPC server to be ready
+      waitForRPC(ARIA2_RPC_PORT)
+        .then(() => {
+          if (aria2Process && !aria2Process.killed) {
+            console.log("[Aria2Manager] aria2 daemon started successfully");
+            resolve();
+          } else {
+            reject(new Error("aria2 process terminated unexpectedly"));
+          }
+        })
+        .catch(reject);
     } catch (error) {
       console.error("[Aria2Manager] Error starting aria2:", error);
       reject(error);

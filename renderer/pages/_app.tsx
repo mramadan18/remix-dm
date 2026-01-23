@@ -15,6 +15,33 @@ function MyApp({ Component, pageProps }: AppProps) {
     (state) => state.initializeListeners,
   );
 
+  // Overwrite console in renderer and redirect to electron-log via IPC
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.ipc && window.ipc.log) {
+      const originalLog = console.log;
+      const originalWarn = console.warn;
+      const originalError = console.error;
+      const originalInfo = console.info;
+
+      console.log = (message: any, ...args: any[]) => {
+        originalLog(message, ...args);
+        window.ipc.log("info", message, ...args);
+      };
+      console.warn = (message: any, ...args: any[]) => {
+        originalWarn(message, ...args);
+        window.ipc.log("warn", message, ...args);
+      };
+      console.error = (message: any, ...args: any[]) => {
+        originalError(message, ...args);
+        window.ipc.log("error", message, ...args);
+      };
+      console.info = (message: any, ...args: any[]) => {
+        originalInfo(message, ...args);
+        window.ipc.log("info", message, ...args);
+      };
+    }
+  }, []);
+
   // Initialize download store listeners once at app start
   useEffect(() => {
     const cleanup = initializeListeners();

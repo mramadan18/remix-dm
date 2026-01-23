@@ -22,6 +22,9 @@ const handler = {
   getVersion() {
     return ipcRenderer.sendSync("get-app-version");
   },
+  log(level: string, message: any, ...args: any[]) {
+    ipcRenderer.send("renderer-log", { level, message, args });
+  },
 };
 
 contextBridge.exposeInMainWorld("ipc", handler);
